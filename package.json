@@ -1,9 +1,9 @@
 {
-  "name": "convert-the-doc",
+  "name": "con-the-doc",
   "version": "1.0.0",
   "type": "module",
   "bin": {
-    "convert-the-doc": "cli.ts"
+    "con-the-doc": "cli.ts"
   },
   "dependencies": {
     "@clack/prompts": "^0.10",

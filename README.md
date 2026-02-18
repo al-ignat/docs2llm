@@ -1,4 +1,4 @@
-# convert-the-doc
+# con-the-doc
 
 CLI tool that converts documents (DOCX, PPTX, XLSX, PDF, images, and 75+ other formats) into LLM-friendly text — and converts Markdown back into DOCX, PPTX, or HTML. Runs instantly via `bunx`, with both interactive guided mode and quick one-liner usage.
 
@@ -8,21 +8,21 @@ Powered by [Kreuzberg](https://kreuzberg.dev) for inbound extraction and [Pandoc
 
 ```bash
 # Convert a file (outputs markdown by default)
-bunx convert-the-doc report.docx
+bunx con-the-doc report.docx
 
 # Interactive mode — auto-discovers files to convert
-bunx convert-the-doc
+bunx con-the-doc
 
 # With options
-bunx convert-the-doc report.docx -f json -o ./output/
+bunx con-the-doc report.docx -f json -o ./output/
 
 # Convert a whole folder
-bunx convert-the-doc ./docs/ -f yaml
+bunx con-the-doc ./docs/ -f yaml
 
 # Outbound: Markdown → documents (requires Pandoc)
-bunx convert-the-doc notes.md -f docx
-bunx convert-the-doc notes.md -f pptx
-bunx convert-the-doc notes.md -f html
+bunx con-the-doc notes.md -f docx
+bunx con-the-doc notes.md -f pptx
+bunx con-the-doc notes.md -f html
 ```
 
 ## Install
@@ -35,20 +35,20 @@ brew install pandoc
 
 ```bash
 # Use directly — no install needed
-bunx convert-the-doc
+bunx con-the-doc
 
 # Or install globally
-bun install -g convert-the-doc
+bun install -g con-the-doc
 ```
 
 ## Usage
 
 ```
-convert-the-doc                          Interactive mode
-convert-the-doc <file>                   Convert a file to .md
-convert-the-doc <folder>                 Convert all files in folder
-convert-the-doc <file> -f json -o ./out  Convert with options
-convert-the-doc notes.md -f docx         Markdown → Word (outbound)
+con-the-doc                          Interactive mode
+con-the-doc <file>                   Convert a file to .md
+con-the-doc <folder>                 Convert all files in folder
+con-the-doc <file> -f json -o ./out  Convert with options
+con-the-doc notes.md -f docx         Markdown → Word (outbound)
 
 Options:
   -f, --format <fmt>   Output format (default: md)
@@ -60,7 +60,7 @@ Options:
 
 ## Interactive Mode
 
-Running `convert-the-doc` with no arguments launches a smart file picker:
+Running `con-the-doc` with no arguments launches a smart file picker:
 
 - Scans your current directory for convertible files
 - Scans `~/Downloads` for recently modified documents (last 24h)
