@@ -1,12 +1,21 @@
 import { stringify as yamlStringify } from "yaml";
+import { extname } from "path";
+import { convertMarkdownTo, type OutboundFormat } from "./outbound";
 
-export type OutputFormat = "md" | "json" | "yaml";
+export type OutputFormat = "md" | "json" | "yaml" | "docx" | "pptx" | "html";
 
-interface ConversionResult {
+const OUTBOUND_FORMATS = new Set<string>(["docx", "pptx", "html"]);
+
+export function isOutboundConversion(filePath: string, format: OutputFormat): boolean {
+  return extname(filePath).toLowerCase() === ".md" && OUTBOUND_FORMATS.has(format);
+}
+
+export interface ConversionResult {
   content: string;
   formatted: string;
   sourcePath: string;
   mimeType: string;
+  outputPath?: string;
 }
 
 interface ExtractionResult {
@@ -35,6 +44,19 @@ export async function convertFile(
   filePath: string,
   format: OutputFormat
 ): Promise<ConversionResult> {
+  // Outbound: Markdown → DOCX/PPTX/HTML via Pandoc
+  if (isOutboundConversion(filePath, format)) {
+    const outPath = await convertMarkdownTo(filePath, format as OutboundFormat);
+    return {
+      content: "",
+      formatted: "",
+      sourcePath: filePath,
+      mimeType: "",
+      outputPath: outPath,
+    };
+  }
+
+  // Inbound: documents → text via Kreuzberg
   const extract = await getExtractFile();
   const result = await extract(filePath);
 

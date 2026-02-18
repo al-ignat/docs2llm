@@ -1,8 +1,8 @@
 # convert-the-doc
 
-CLI tool that converts documents (DOCX, PPTX, XLSX, PDF, images, and 75+ other formats) into LLM-friendly text. Runs instantly via `bunx`, with both interactive guided mode and quick one-liner usage.
+CLI tool that converts documents (DOCX, PPTX, XLSX, PDF, images, and 75+ other formats) into LLM-friendly text — and converts Markdown back into DOCX, PPTX, or HTML. Runs instantly via `bunx`, with both interactive guided mode and quick one-liner usage.
 
-Powered by [Kreuzberg](https://kreuzberg.dev) (Rust core, native JS bindings).
+Powered by [Kreuzberg](https://kreuzberg.dev) for inbound extraction and [Pandoc](https://pandoc.org) for outbound conversion.
 
 ## Quick Start
 
@@ -18,11 +18,20 @@ bunx convert-the-doc report.docx -f json -o ./output/
 
 # Convert a whole folder
 bunx convert-the-doc ./docs/ -f yaml
+
+# Outbound: Markdown → documents (requires Pandoc)
+bunx convert-the-doc notes.md -f docx
+bunx convert-the-doc notes.md -f pptx
+bunx convert-the-doc notes.md -f html
 ```
 
 ## Install
 
-Requires [Bun](https://bun.sh).
+Requires [Bun](https://bun.sh). Outbound conversion (md → docx/pptx/html) also requires [Pandoc](https://pandoc.org):
+
+```bash
+brew install pandoc
+```
 
 ```bash
 # Use directly — no install needed
@@ -39,11 +48,14 @@ convert-the-doc                          Interactive mode
 convert-the-doc <file>                   Convert a file to .md
 convert-the-doc <folder>                 Convert all files in folder
 convert-the-doc <file> -f json -o ./out  Convert with options
+convert-the-doc notes.md -f docx         Markdown → Word (outbound)
 
 Options:
-  -f, --format <md|json|yaml>   Output format (default: md)
-  -o, --output <path>           Output directory
-  -h, --help                    Show this help
+  -f, --format <fmt>   Output format (default: md)
+                        Inbound:  md, json, yaml
+                        Outbound: docx, pptx, html (requires Pandoc)
+  -o, --output <path>  Output directory
+  -h, --help           Show this help
 ```
 
 ## Interactive Mode
@@ -81,6 +93,16 @@ This is paragraph one.
 ```
 
 **YAML** — same structure as JSON, in YAML format.
+
+## Outbound Conversion (Markdown → Documents)
+
+When the input is a `.md` file, you can convert it to:
+
+- **DOCX** — Word document via Pandoc
+- **PPTX** — PowerPoint presentation via Pandoc (slides split on `---` or headings)
+- **HTML** — standalone HTML page via Pandoc
+
+Requires [Pandoc](https://pandoc.org) installed (`brew install pandoc`).
 
 ## Supported Formats
 

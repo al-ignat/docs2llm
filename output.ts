@@ -5,6 +5,9 @@ const EXT_MAP: Record<OutputFormat, string> = {
   md: ".md",
   json: ".json",
   yaml: ".yaml",
+  docx: ".docx",
+  pptx: ".pptx",
+  html: ".html",
 };
 
 export function resolveOutputPath(

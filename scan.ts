@@ -8,6 +8,7 @@ const CONVERTIBLE_EXTS = new Set([
   ".rtf", ".epub", ".mobi", ".eml", ".msg",
   ".csv", ".tsv", ".html", ".xml",
   ".png", ".jpg", ".jpeg", ".tiff", ".bmp", ".gif", ".webp",
+  ".md",
 ]);
 
 export interface FileInfo {

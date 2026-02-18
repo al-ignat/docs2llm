@@ -6,7 +6,7 @@ import { convertFile, type OutputFormat } from "./convert";
 import { resolveOutputPath, writeOutput } from "./output";
 import { runInteractive } from "./interactive";
 
-const VALID_FORMATS = new Set(["md", "json", "yaml"]);
+const VALID_FORMATS = new Set(["md", "json", "yaml", "docx", "pptx", "html"]);
 
 function parseArgs(argv: string[]) {
   // Bun.argv: [bun, script, ...args]
@@ -20,7 +20,7 @@ function parseArgs(argv: string[]) {
     if (arg === "-f" || arg === "--format") {
       const val = args[++i];
       if (!val || !VALID_FORMATS.has(val)) {
-        console.error(`Invalid format: ${val ?? "(empty)"}. Use: md, json, yaml`);
+        console.error(`Invalid format: ${val ?? "(empty)"}. Use: md, json, yaml, docx, pptx, html`);
         process.exit(1);
       }
       format = val as OutputFormat;
@@ -51,10 +51,17 @@ Usage:
   convert-the-doc <folder>                 Convert all files in folder
   convert-the-doc <file> -f json -o ./out  Convert with options
 
+  Outbound (Markdown → documents, requires Pandoc):
+  convert-the-doc notes.md -f docx         Convert .md to Word
+  convert-the-doc notes.md -f pptx         Convert .md to PowerPoint
+  convert-the-doc notes.md -f html         Convert .md to HTML
+
 Options:
-  -f, --format <md|json|yaml>   Output format (default: md)
-  -o, --output <path>           Output directory
-  -h, --help                    Show this help
+  -f, --format <fmt>   Output format (default: md)
+                        Inbound:  md, json, yaml
+                        Outbound: docx, pptx, html (requires Pandoc)
+  -o, --output <path>  Output directory
+  -h, --help           Show this help
 `);
 }
 
@@ -97,9 +104,16 @@ async function convertSingleFile(
 ) {
   try {
     const result = await convertFile(filePath, format);
-    const outPath = resolveOutputPath(filePath, format, outputDir);
-    await writeOutput(outPath, result.formatted);
-    console.log(`✓ ${filePath} → ${outPath}`);
+
+    if (result.outputPath) {
+      // Outbound: Pandoc already wrote the file
+      console.log(`✓ ${filePath} → ${result.outputPath}`);
+    } else {
+      // Inbound: write the formatted text
+      const outPath = resolveOutputPath(filePath, format, outputDir);
+      await writeOutput(outPath, result.formatted);
+      console.log(`✓ ${filePath} → ${outPath}`);
+    }
   } catch (err: any) {
     console.error(`✗ ${filePath}: ${err.message ?? err}`);
     process.exit(1);
@@ -128,9 +142,14 @@ async function convertFolder(
   for (const file of files) {
     try {
       const result = await convertFile(file, format);
-      const outPath = resolveOutputPath(file, format, outputDir);
-      await writeOutput(outPath, result.formatted);
-      console.log(`✓ ${file} → ${outPath}`);
+
+      if (result.outputPath) {
+        console.log(`✓ ${file} → ${result.outputPath}`);
+      } else {
+        const outPath = resolveOutputPath(file, format, outputDir);
+        await writeOutput(outPath, result.formatted);
+        console.log(`✓ ${file} → ${outPath}`);
+      }
       ok++;
     } catch (err: any) {
       console.error(`✗ ${file}: ${err.message ?? err}`);

@@ -1,5 +1,5 @@
 import * as p from "@clack/prompts";
-import { resolve } from "path";
+import { resolve, extname } from "path";
 import { statSync } from "fs";
 import { convertFile, type OutputFormat } from "./convert";
 import { resolveOutputPath, writeOutput } from "./output";
@@ -11,7 +11,7 @@ export async function runInteractive() {
   const filePath = await pickFile();
   if (!filePath) return;
 
-  const format = await pickFormat();
+  const format = await pickFormat(filePath);
   if (!format) return;
 
   await convert(filePath, format);
@@ -105,14 +105,26 @@ async function manualInput(): Promise<string | null> {
   return resolve(input);
 }
 
-async function pickFormat(): Promise<OutputFormat | null> {
+async function pickFormat(filePath: string): Promise<OutputFormat | null> {
+  const isMarkdown = extname(filePath).toLowerCase() === ".md";
+
+  const options: { value: OutputFormat; label: string; hint?: string }[] = isMarkdown
+    ? [
+        { value: "docx", label: "Word", hint: ".docx" },
+        { value: "pptx", label: "PowerPoint", hint: ".pptx" },
+        { value: "html", label: "HTML", hint: ".html" },
+        { value: "json", label: "JSON", hint: ".json" },
+        { value: "yaml", label: "YAML", hint: ".yaml" },
+      ]
+    : [
+        { value: "md", label: "Markdown", hint: ".md" },
+        { value: "json", label: "JSON", hint: ".json" },
+        { value: "yaml", label: "YAML", hint: ".yaml" },
+      ];
+
   const format = await p.select<OutputFormat>({
     message: "Output format:",
-    options: [
-      { value: "md", label: "Markdown", hint: ".md" },
-      { value: "json", label: "JSON", hint: ".json" },
-      { value: "yaml", label: "YAML", hint: ".yaml" },
-    ],
+    options,
   });
 
   if (p.isCancel(format)) {
@@ -129,9 +141,16 @@ async function convert(filePath: string, format: OutputFormat) {
 
   try {
     const result = await convertFile(filePath, format);
-    const outPath = resolveOutputPath(filePath, format);
-    await writeOutput(outPath, result.formatted);
-    s.stop(`${result.sourcePath} → ${outPath}`);
+
+    if (result.outputPath) {
+      // Outbound: Pandoc already wrote the file
+      s.stop(`${result.sourcePath} → ${result.outputPath}`);
+    } else {
+      // Inbound: we write the formatted text
+      const outPath = resolveOutputPath(filePath, format);
+      await writeOutput(outPath, result.formatted);
+      s.stop(`${result.sourcePath} → ${outPath}`);
+    }
   } catch (err: any) {
     s.stop("Conversion failed.");
     p.log.error(err.message ?? String(err));
