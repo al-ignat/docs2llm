@@ -1,117 +1,139 @@
 import * as p from "@clack/prompts";
-import { readdirSync, statSync } from "fs";
-import { resolve, join } from "path";
+import { resolve } from "path";
+import { statSync } from "fs";
 import { convertFile, type OutputFormat } from "./convert";
 import { resolveOutputPath, writeOutput } from "./output";
+import { scanForFiles, formatHint, type FileInfo } from "./scan";
 
 export async function runInteractive() {
   p.intro("convert-the-doc");
 
-  const action = await p.select({
-    message: "What would you like to do?",
-    options: [
-      { value: "file", label: "Convert a file" },
-      { value: "folder", label: "Convert a folder" },
-    ],
-  });
-  if (p.isCancel(action)) return p.cancel("Cancelled.");
+  const filePath = await pickFile();
+  if (!filePath) return;
 
-  const inputPath = await p.text({
-    message: action === "file" ? "File path:" : "Folder path:",
-    placeholder: action === "file" ? "./report.docx" : "./docs/",
-    validate: (val) => {
-      if (!val.trim()) return "Path is required.";
-      try {
-        const stat = statSync(resolve(val));
-        if (action === "file" && !stat.isFile()) return "Not a file.";
-        if (action === "folder" && !stat.isDirectory()) return "Not a folder.";
-      } catch {
-        return "Path not found.";
-      }
-    },
-  });
-  if (p.isCancel(inputPath)) return p.cancel("Cancelled.");
+  const format = await pickFormat();
+  if (!format) return;
 
-  const format = await p.select<OutputFormat>({
-    message: "Output format:",
-    options: [
-      { value: "md", label: "Markdown (.md)" },
-      { value: "json", label: "JSON (.json)" },
-      { value: "yaml", label: "YAML (.yaml)" },
-    ],
-  });
-  if (p.isCancel(format)) return p.cancel("Cancelled.");
-
-  const outputChoice = await p.select({
-    message: "Output location:",
-    options: [
-      { value: "same", label: "Same folder as source" },
-      { value: "custom", label: "Custom path" },
-    ],
-  });
-  if (p.isCancel(outputChoice)) return p.cancel("Cancelled.");
-
-  let outputDir: string | undefined;
-  if (outputChoice === "custom") {
-    const customPath = await p.text({
-      message: "Output folder:",
-      placeholder: "./output/",
-      validate: (val) => {
-        if (!val.trim()) return "Path is required.";
-      },
-    });
-    if (p.isCancel(customPath)) return p.cancel("Cancelled.");
-    outputDir = resolve(customPath);
-  }
-
-  const resolvedInput = resolve(inputPath);
-
-  if (action === "file") {
-    const s = p.spinner();
-    s.start("Converting...");
-    try {
-      const result = await convertFile(resolvedInput, format);
-      const outPath = resolveOutputPath(resolvedInput, format, outputDir);
-      await writeOutput(outPath, result.formatted);
-      s.stop(`${inputPath} → ${outPath}`);
-    } catch (err: any) {
-      s.stop("Conversion failed.");
-      p.log.error(err.message ?? String(err));
-    }
-  } else {
-    const files = collectFiles(resolvedInput);
-    if (files.length === 0) {
-      p.log.warn("No files found in folder.");
-      return p.outro("Done.");
-    }
-
-    const s = p.spinner();
-    s.start(`Converting ${files.length} file(s)...`);
-    let ok = 0;
-    let fail = 0;
-    for (const file of files) {
-      try {
-        const result = await convertFile(file, format);
-        const outPath = resolveOutputPath(file, format, outputDir);
-        await writeOutput(outPath, result.formatted);
-        ok++;
-      } catch {
-        fail++;
-      }
-    }
-    s.stop(`Done: ${ok} converted, ${fail} failed.`);
-  }
+  await convert(filePath, format);
 
   p.outro("Done!");
 }
 
-function collectFiles(dir: string): string[] {
-  const files: string[] = [];
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const full = join(dir, entry.name);
-    if (entry.isFile() && !entry.name.startsWith(".")) {
-      files.push(full);
+async function pickFile(): Promise<string | null> {
+  const { cwd, downloads } = scanForFiles();
+  const hasFiles = cwd.length > 0 || downloads.length > 0;
+
+  if (!hasFiles) {
+    p.log.warn("No convertible files found in current folder or ~/Downloads.");
+    return await manualInput();
+  }
+
+  type PickValue = string | symbol;
+  const options: { value: PickValue; label: string; hint?: string }[] = [];
+
+  if (cwd.length > 0) {
+    for (const file of cwd) {
+      options.push({
+        value: file.path,
+        label: file.name,
+        hint: formatHint(file),
+      });
     }
   }
-  return files;
+
+  if (downloads.length > 0) {
+    if (cwd.length > 0) {
+      options.push({ value: "__sep__", label: "── Downloads ──", hint: "" });
+    }
+    for (const file of downloads) {
+      options.push({
+        value: file.path,
+        label: file.name,
+        hint: formatHint(file),
+      });
+    }
+  }
+
+  options.push({
+    value: "__browse__",
+    label: "Browse or paste a path…",
+    hint: "",
+  });
+
+  const picked = await p.select({
+    message: "Pick a file to convert:",
+    options: options as any,
+  });
+
+  if (p.isCancel(picked)) {
+    p.cancel("Cancelled.");
+    return null;
+  }
+
+  if (picked === "__sep__") {
+    // User landed on separator, re-run (shouldn't happen with arrow nav)
+    return await pickFile();
+  }
+
+  if (picked === "__browse__") {
+    return await manualInput();
+  }
+
+  return picked as string;
+}
+
+async function manualInput(): Promise<string | null> {
+  const input = await p.text({
+    message: "File path:",
+    placeholder: "Drag a file here or type a path",
+    validate: (val) => {
+      if (!val.trim()) return "Path is required.";
+      try {
+        const stat = statSync(resolve(val));
+        if (!stat.isFile()) return "Not a file.";
+      } catch {
+        return "File not found.";
+      }
+    },
+  });
+
+  if (p.isCancel(input)) {
+    p.cancel("Cancelled.");
+    return null;
+  }
+
+  return resolve(input);
+}
+
+async function pickFormat(): Promise<OutputFormat | null> {
+  const format = await p.select<OutputFormat>({
+    message: "Output format:",
+    options: [
+      { value: "md", label: "Markdown", hint: ".md" },
+      { value: "json", label: "JSON", hint: ".json" },
+      { value: "yaml", label: "YAML", hint: ".yaml" },
+    ],
+  });
+
+  if (p.isCancel(format)) {
+    p.cancel("Cancelled.");
+    return null;
+  }
+
+  return format;
+}
+
+async function convert(filePath: string, format: OutputFormat) {
+  const s = p.spinner();
+  s.start("Converting…");
+
+  try {
+    const result = await convertFile(filePath, format);
+    const outPath = resolveOutputPath(filePath, format);
+    await writeOutput(outPath, result.formatted);
+    s.stop(`${result.sourcePath} → ${outPath}`);
+  } catch (err: any) {
+    s.stop("Conversion failed.");
+    p.log.error(err.message ?? String(err));
+  }
 }

@@ -9,7 +9,13 @@ interface ConversionResult {
   mimeType: string;
 }
 
-let extractFileFn: typeof import("@kreuzberg/node").extractFile | null = null;
+interface ExtractionResult {
+  content: string;
+  mimeType: string;
+  metadata: Record<string, unknown>;
+}
+
+let extractFileFn: ((path: string) => Promise<ExtractionResult>) | null = null;
 
 async function getExtractFile() {
   if (extractFileFn) return extractFileFn;
@@ -22,7 +28,7 @@ async function getExtractFile() {
     await wasm.initWasm();
     extractFileFn = wasm.extractFile;
   }
-  return extractFileFn;
+  return extractFileFn!;
 }
 
 export async function convertFile(

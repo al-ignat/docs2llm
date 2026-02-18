@@ -10,7 +10,7 @@ Powered by [Kreuzberg](https://kreuzberg.dev) (Rust core, native JS bindings).
 # Convert a file (outputs markdown by default)
 bunx convert-the-doc report.docx
 
-# Interactive guided mode
+# Interactive mode — auto-discovers files to convert
 bunx convert-the-doc
 
 # With options
@@ -45,6 +45,15 @@ Options:
   -o, --output <path>           Output directory
   -h, --help                    Show this help
 ```
+
+## Interactive Mode
+
+Running `convert-the-doc` with no arguments launches a smart file picker:
+
+- Scans your current directory for convertible files
+- Scans `~/Downloads` for recently modified documents (last 24h)
+- Shows results sorted by recency — pick with arrow keys
+- Falls back to manual path input (supports drag-and-drop from Finder)
 
 ## Output Formats
 
