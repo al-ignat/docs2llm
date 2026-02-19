@@ -19,6 +19,8 @@ import { runConfigWizard } from "./config-wizard";
 import { runPaste, type PasteOptions } from "./paste";
 import { getTokenStats, formatTokenStats } from "./tokens";
 import { startServer } from "./api";
+import { fetchAndConvert } from "./fetch";
+import { startWatcher } from "./watch";
 
 function confirm(prompt: string): Promise<boolean> {
   return new Promise((resolve) => {
@@ -46,8 +48,11 @@ function parseArgs(argv: string[]) {
   let isGlobal = false;
   let ocr: OcrOptions | undefined;
 
+  // Watch subcommand options
+  let watchTo: string | null = null;
+
   // Check for subcommand as first positional arg
-  if (args.length > 0 && (args[0] === "init" || args[0] === "config" || args[0] === "paste" || args[0] === "open" || args[0] === "formats")) {
+  if (args.length > 0 && (args[0] === "init" || args[0] === "config" || args[0] === "paste" || args[0] === "open" || args[0] === "formats" || args[0] === "watch")) {
     command = args[0];
     for (let i = 1; i < args.length; i++) {
       if (args[i] === "--global") isGlobal = true;
@@ -65,9 +70,20 @@ function parseArgs(argv: string[]) {
           }
         }
       }
-      return { input, format, output, formatExplicit, force, pandocArgs, command, template, isGlobal, pasteOpts };
+      return { input, format, output, formatExplicit, force, pandocArgs, command, template, isGlobal, pasteOpts, watchTo };
     }
-    return { input, format, output, formatExplicit, force, pandocArgs, command, template, isGlobal, pasteOpts: undefined };
+    if (command === "watch") {
+      // docs2llm watch <dir> --to <dir>
+      for (let i = 1; i < args.length; i++) {
+        if (args[i] === "--to" || args[i] === "-o") {
+          watchTo = args[++i] || null;
+        } else if (!args[i].startsWith("-") && !input) {
+          input = args[i];
+        }
+      }
+      return { input, format, output, formatExplicit, force, pandocArgs, command, template, isGlobal, pasteOpts: undefined, watchTo };
+    }
+    return { input, format, output, formatExplicit, force, pandocArgs, command, template, isGlobal, pasteOpts: undefined, watchTo };
   }
 
   for (let i = 0; i < args.length; i++) {
@@ -125,7 +141,7 @@ function parseArgs(argv: string[]) {
     }
   }
 
-  return { input, format, output, formatExplicit, force, pandocArgs, command, template, isGlobal, ocr, pasteOpts: undefined as PasteOptions | undefined };
+  return { input, format, output, formatExplicit, force, pandocArgs, command, template, isGlobal, ocr, pasteOpts: undefined as PasteOptions | undefined, watchTo: null as string | null };
 }
 
 function printHelp() {
@@ -136,6 +152,7 @@ Usage:
   docs2llm                          Interactive mode
   docs2llm <file>                   Convert a file to .md
   docs2llm <folder>                 Convert all files in folder
+  docs2llm <url>                    Fetch and convert a web page
   docs2llm <file> -f json -o ./out  Convert with options
   docs2llm <file> -t report         Use a named template
 
@@ -149,6 +166,9 @@ Usage:
   docs2llm paste --copy             Convert and copy back to clipboard
   docs2llm paste --stdout           Convert and print to terminal
   docs2llm paste -o <file>          Convert and save to file
+
+  Watch:
+  docs2llm watch <dir> --to <dir>   Auto-convert new files in folder
 
   Web UI:
   docs2llm open                     Launch web UI at localhost:3000
@@ -218,7 +238,7 @@ Tip: most source code files are also supported.
 }
 
 async function main() {
-  const { input, format, output, formatExplicit, force, pandocArgs, command, template, isGlobal, ocr, pasteOpts } =
+  const { input, format, output, formatExplicit, force, pandocArgs, command, template, isGlobal, ocr, pasteOpts, watchTo } =
     parseArgs(Bun.argv);
 
   // Handle subcommands
@@ -249,6 +269,12 @@ async function main() {
     } else {
       Bun.spawn(["xdg-open", url], { stdout: "ignore", stderr: "ignore" });
     }
+    return;
+  }
+  if (command === "watch") {
+    const watchDir = input ? resolve(input) : process.cwd();
+    const outDir = watchTo ? resolve(watchTo) : resolve(watchDir, "converted");
+    startWatcher(watchDir, outDir);
     return;
   }
 
@@ -287,6 +313,12 @@ async function main() {
     return;
   }
 
+  // URL detection: fetch and convert web pages or remote documents
+  if (input.startsWith("http://") || input.startsWith("https://")) {
+    await convertUrl(input, effectiveOutputDir, effectiveForce);
+    return;
+  }
+
   const resolvedInput = resolve(input);
   let stat;
   try {
@@ -296,7 +328,8 @@ async function main() {
     console.error(
       `✗ Can't find '${input}'.\n` +
       `  Current folder: ${cwd}\n` +
-      `  Tip: drag the file from Finder into this terminal, or use an absolute path.`
+      `  Tip: drag the file from Finder into this terminal, or use an absolute path.\n` +
+      `  Tip: to convert a web page, use a full URL starting with https://`
     );
     process.exit(1);
   }
@@ -523,6 +556,38 @@ async function convertFolder(
   const parts = [`${ok} converted`, `${fail} failed`];
   if (skipped > 0) parts.push(`${skipped} skipped`);
   console.log(`\nDone: ${parts.join(", ")}.`);
+}
+
+async function convertUrl(url: string, outputDir?: string, force?: boolean) {
+  const { basename: pathBasename } = await import("path");
+
+  try {
+    // Derive a filename from the URL
+    let urlPath = new URL(url).pathname.replace(/\/$/, "");
+    let name = pathBasename(urlPath) || "page";
+    // Strip extension if it had one, we always output .md
+    name = name.replace(/\.[^.]+$/, "");
+    const outName = `${name}.md`;
+    const outPath = outputDir ? resolve(outputDir, outName) : resolve(outName);
+
+    if (!force && existsSync(outPath)) {
+      const ok = await confirm(`Output file already exists: ${outPath}\nOverwrite? [y/N] `);
+      if (!ok) process.exit(0);
+    }
+
+    console.log(`Fetching ${url}…`);
+    const result = await fetchAndConvert(url);
+    await writeOutput(outPath, result.content);
+    const stats = getTokenStats(result.content);
+    console.log(`✓ ${url} → ${outPath} (${formatTokenStats(stats)})`);
+  } catch (err: any) {
+    console.error(
+      `✗ Failed to fetch '${url}'.\n` +
+      `  ${err.message ?? err}\n` +
+      `  Tip: check the URL is correct and accessible.`
+    );
+    process.exit(1);
+  }
 }
 
 main();

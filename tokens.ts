@@ -68,3 +68,48 @@ export function truncateToFit(text: string, targetTokens: number): string {
   if (words.length <= targetWords) return text;
   return words.slice(0, targetWords).join(" ") + "\n\n[Truncated to fit context window]";
 }
+
+export interface SplitResult {
+  parts: string[];
+  tokensPerPart: number[];
+}
+
+/**
+ * Split text into roughly equal parts that each fit within targetTokens.
+ * Splits at paragraph boundaries when possible.
+ */
+export function splitToFit(text: string, targetTokens: number): SplitResult {
+  const totalTokens = estimateTokens(text);
+  const numParts = Math.ceil(totalTokens / (targetTokens * 0.95)); // 5% margin
+
+  if (numParts <= 1) {
+    return { parts: [text], tokensPerPart: [totalTokens] };
+  }
+
+  const paragraphs = text.split(/\n{2,}/);
+  const targetWordsPerPart = Math.floor((targetTokens * 0.95) / 1.33);
+
+  const parts: string[] = [];
+  let currentParagraphs: string[] = [];
+  let currentWords = 0;
+
+  for (const para of paragraphs) {
+    const paraWords = para.split(/\s+/).filter(Boolean).length;
+
+    if (currentWords + paraWords > targetWordsPerPart && currentParagraphs.length > 0) {
+      parts.push(currentParagraphs.join("\n\n"));
+      currentParagraphs = [];
+      currentWords = 0;
+    }
+
+    currentParagraphs.push(para);
+    currentWords += paraWords;
+  }
+
+  if (currentParagraphs.length > 0) {
+    parts.push(currentParagraphs.join("\n\n"));
+  }
+
+  const tokensPerPart = parts.map((p) => estimateTokens(p));
+  return { parts, tokensPerPart };
+}

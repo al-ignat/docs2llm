@@ -1,5 +1,5 @@
 import * as p from "@clack/prompts";
-import { resolve, extname, dirname } from "path";
+import { resolve, extname, dirname, join, basename } from "path";
 import { statSync, existsSync, mkdirSync } from "fs";
 import { homedir } from "os";
 import { convertFile, looksLikeScannedPdf, type OutputFormat } from "./convert";
@@ -16,7 +16,10 @@ import {
   anyTooLong,
   smallestLimit,
   truncateToFit,
+  splitToFit,
+  estimateTokens,
 } from "./tokens";
+import { fetchAndConvert } from "./fetch";
 
 export type FormatChoice =
   | { kind: "format"; format: OutputFormat }
@@ -38,6 +41,28 @@ export async function runInteractive(config?: Config) {
 
   const filePath = await pickFile();
   if (!filePath) return;
+
+  // Handle URL conversion
+  if (filePath.startsWith("__url__:")) {
+    const url = filePath.slice(8);
+    await convertUrlInteractive(url, config);
+    if (isFirstRun) {
+      p.log.info("Tip: run docs2llm init to save your preferences.");
+    }
+    p.outro("Done!");
+    return;
+  }
+
+  // Handle batch conversion
+  if (filePath.startsWith("__batch__:")) {
+    const dir = filePath.slice(10);
+    await convertBatchInteractive(dir, config);
+    if (isFirstRun) {
+      p.log.info("Tip: run docs2llm init to save your preferences.");
+    }
+    p.outro("Done!");
+    return;
+  }
 
   const choice = await pickFormat(filePath, config);
   if (!choice) return;
@@ -95,6 +120,28 @@ async function pickFile(): Promise<string | null> {
     options.push({ value: "__sep__", label: "── Downloads ──", hint: "nothing in the last 24h" });
   }
 
+  // Batch options
+  if (cwd.length > 1) {
+    options.push({
+      value: "__batch_cwd__",
+      label: "Convert all files in current folder",
+      hint: `${cwd.length} files`,
+    });
+  }
+  if (downloads.length > 1) {
+    options.push({
+      value: "__batch_dl__",
+      label: "Convert all recent downloads",
+      hint: `${downloads.length} files`,
+    });
+  }
+
+  options.push({
+    value: "__url__",
+    label: "Paste a URL…",
+    hint: "",
+  });
+
   options.push({
     value: "__browse__",
     label: "Browse or paste a path…",
@@ -113,6 +160,20 @@ async function pickFile(): Promise<string | null> {
 
   if (picked === "__sep__") {
     return await pickFile();
+  }
+
+  if (picked === "__url__") {
+    return await urlInput();
+  }
+
+  if (picked === "__batch_cwd__") {
+    return `__batch__:${process.cwd()}`;
+  }
+
+  if (picked === "__batch_dl__") {
+    const { join } = await import("path");
+    const { homedir: getHome } = await import("os");
+    return `__batch__:${join(getHome(), "Downloads")}`;
   }
 
   if (picked === "__browse__") {
@@ -154,6 +215,28 @@ async function manualInput(): Promise<string | null> {
   }
 
   return resolve(cleanPath(input));
+}
+
+async function urlInput(): Promise<string | null> {
+  const input = await p.text({
+    message: "URL:",
+    placeholder: "https://example.com/article",
+    validate: (val) => {
+      if (!val.trim()) return "URL is required.";
+      try {
+        new URL(val.trim());
+      } catch {
+        return "Not a valid URL. Include https://";
+      }
+    },
+  });
+
+  if (p.isCancel(input)) {
+    p.cancel("Cancelled.");
+    return null;
+  }
+
+  return `__url__:${input.trim()}`;
 }
 
 async function pickFormat(
@@ -377,19 +460,42 @@ async function convert(
         p.log.info(`Fits in: ${formatLLMFit(fits)}`);
       }
 
-      // Offer to shorten if too long for any model
+      // Offer to shorten or split if too long for any model
       if (anyTooLong(fits)) {
         const target = smallestLimit(fits)!;
-        const shorten = await p.confirm({
-          message: `This is ~${stats.tokens.toLocaleString()} tokens. Shorten to fit ${target.name}?`,
-          initialValue: false,
+        const { splitToFit: doSplit } = await import("./tokens");
+        const splitResult = doSplit(result.content, target.limit);
+        const numParts = splitResult.parts.length;
+
+        const action = await p.select({
+          message: `This is ~${stats.tokens.toLocaleString()} tokens, too long for ${target.name}. What to do?`,
+          options: [
+            { value: "shorten", label: "Shorten (truncate)", hint: `trim to ~${target.limit.toLocaleString()} tokens` },
+            { value: "split", label: `Split into ${numParts} parts`, hint: `each ~${Math.round(stats.tokens / numParts).toLocaleString()} tokens` },
+            { value: "skip", label: "Keep as-is" },
+          ] as any,
         });
-        if (!p.isCancel(shorten) && shorten) {
+
+        if (!p.isCancel(action) && action === "shorten") {
           const shortened = truncateToFit(result.content, target.limit);
           outputContent = shortened;
           await writeOutput(plan.outputPath, shortened);
           const newStats = getTokenStats(shortened);
           p.log.success(`Shortened to ~${newStats.tokens.toLocaleString()} tokens`);
+        } else if (!p.isCancel(action) && action === "split") {
+          const { dirname: pathDirname, basename: pathBasename, extname: pathExtname } = await import("path");
+          const dir = pathDirname(plan.outputPath);
+          const base = pathBasename(plan.outputPath, pathExtname(plan.outputPath));
+          const ext = pathExtname(plan.outputPath);
+
+          for (let i = 0; i < splitResult.parts.length; i++) {
+            const partPath = join(dir, `${base}-part-${i + 1}${ext}`);
+            await writeOutput(partPath, splitResult.parts[i]);
+          }
+          p.log.success(
+            `Split into ${splitResult.parts.length} parts: ` +
+            splitResult.tokensPerPart.map((t, i) => `part-${i + 1} (~${t.toLocaleString()} tokens)`).join(", ")
+          );
         }
       }
     }
@@ -401,6 +507,80 @@ async function convert(
 
   // Post-conversion menu
   await postConversionMenu(finalOutputPath, outputContent);
+}
+
+async function convertUrlInteractive(url: string, config?: Config) {
+  const { basename: pathBasename } = await import("path");
+  const { resolve: pathResolve } = await import("path");
+
+  const s = p.spinner();
+  s.start(`Fetching ${url}…`);
+
+  try {
+    const result = await fetchAndConvert(url);
+
+    // Derive output filename from URL
+    let urlPath = new URL(url).pathname.replace(/\/$/, "");
+    let name = pathBasename(urlPath) || "page";
+    name = name.replace(/\.[^.]+$/, "");
+    const outPath = pathResolve(`${name}.md`);
+
+    await writeOutput(outPath, result.content);
+    const stats = getTokenStats(result.content);
+    s.stop(`${url} → ${outPath} (${formatTokenStats(stats)})`);
+
+    await postConversionMenu(outPath, result.content);
+  } catch (err: any) {
+    s.stop("Fetch failed.");
+    p.log.error(err.message ?? String(err));
+  }
+}
+
+async function convertBatchInteractive(dir: string, config?: Config) {
+  const { readdirSync, statSync: fStatSync } = await import("fs");
+  const { join, extname: pathExtname } = await import("path");
+
+  const CONVERTIBLE_EXTS = new Set([
+    ".docx", ".doc", ".pdf", ".pptx", ".ppt",
+    ".xlsx", ".xls", ".odt", ".odp", ".ods",
+    ".rtf", ".epub", ".mobi", ".eml", ".msg",
+    ".csv", ".tsv", ".html", ".xml", ".txt",
+    ".png", ".jpg", ".jpeg", ".tiff", ".bmp", ".gif", ".webp",
+  ]);
+
+  const files = readdirSync(dir, { withFileTypes: true })
+    .filter((e) => e.isFile() && !e.name.startsWith(".") && CONVERTIBLE_EXTS.has(pathExtname(e.name).toLowerCase()))
+    .map((e) => join(dir, e.name));
+
+  if (files.length === 0) {
+    p.log.warn("No convertible files found.");
+    return;
+  }
+
+  p.log.info(`Found ${files.length} file(s) to convert.`);
+
+  let ok = 0;
+  let fail = 0;
+  for (const file of files) {
+    try {
+      const result = await convertFile(file, "md");
+      const { basename: pathBasename } = await import("path");
+      const outName = pathBasename(file).replace(/\.[^.]+$/, "") + ".md";
+      const outPath = join(dirname(file), outName);
+      await writeOutput(outPath, result.formatted);
+      const stats = getTokenStats(result.content);
+      p.log.success(`${pathBasename(file)} → ${outName} (${formatTokenStats(stats)})`);
+      ok++;
+    } catch (err: any) {
+      const { basename: pathBasename } = await import("path");
+      p.log.error(`${pathBasename(file)}: ${err.message ?? err}`);
+      fail++;
+    }
+  }
+
+  const parts = [`${ok} converted`];
+  if (fail > 0) parts.push(`${fail} failed`);
+  p.log.info(parts.join(", "));
 }
 
 async function postConversionMenu(
