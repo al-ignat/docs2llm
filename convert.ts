@@ -6,26 +6,35 @@ export type OutputFormat = "md" | "json" | "yaml" | "docx" | "pptx" | "html";
 
 const OUTBOUND_FORMATS = new Set<string>(["docx", "pptx", "html"]);
 
+export interface OcrOptions {
+  enabled?: boolean;
+  force?: boolean;
+  language?: string;
+}
+
 export interface ConversionResult {
   content: string;
   formatted: string;
   sourcePath: string;
   mimeType: string;
   outputPath?: string;
+  qualityScore?: number | null;
 }
 
 export interface ConvertOptions {
   outputDir?: string;
   pandocArgs?: string[];
+  ocr?: OcrOptions;
 }
 
 interface ExtractionResult {
   content: string;
   mimeType: string;
   metadata: Record<string, unknown>;
+  qualityScore?: number | null;
 }
 
-let extractFileFn: ((path: string) => Promise<ExtractionResult>) | null = null;
+let extractFileFn: ((path: string, mime: any, config?: any) => Promise<ExtractionResult>) | null = null;
 
 async function getExtractFile() {
   if (extractFileFn) return extractFileFn;
@@ -58,12 +67,33 @@ async function getExtractBytes(): Promise<ExtractBytesFn> {
   return extractBytesFn!;
 }
 
+function buildExtractionConfig(ocr?: OcrOptions): Record<string, unknown> {
+  const config: Record<string, unknown> = {
+    outputFormat: "markdown",
+    enableQualityProcessing: true,
+  };
+
+  if (ocr?.enabled || ocr?.force) {
+    config.ocr = {
+      enabled: true,
+      ...(ocr.language ? { language: ocr.language } : {}),
+    };
+  }
+
+  if (ocr?.force) {
+    config.forceOcr = true;
+  }
+
+  return config;
+}
+
 export async function convertBytes(
   data: Uint8Array,
-  mimeType: string
-): Promise<{ content: string; mimeType: string; metadata: Record<string, unknown> }> {
+  mimeType: string,
+  ocr?: OcrOptions
+): Promise<{ content: string; mimeType: string; metadata: Record<string, unknown>; qualityScore?: number | null }> {
   const extractBytes = await getExtractBytes();
-  return extractBytes(data, mimeType, { outputFormat: "markdown" });
+  return extractBytes(data, mimeType, buildExtractionConfig(ocr));
 }
 
 export async function convertHtmlToMarkdown(html: string): Promise<string> {
@@ -107,7 +137,8 @@ export async function convertFile(
 
   // Inbound: documents → text via Kreuzberg
   const extract = await getExtractFile();
-  const result = await extract(filePath, null, { outputFormat: "markdown" });
+  const config = buildExtractionConfig(options?.ocr);
+  const result = await extract(filePath, null, config);
 
   const textContent = result.content;
   const formatted = formatOutput(textContent, filePath, result.mimeType, result.metadata, format);
@@ -117,7 +148,17 @@ export async function convertFile(
     formatted,
     sourcePath: filePath,
     mimeType: result.mimeType,
+    qualityScore: result.qualityScore,
   };
+}
+
+/** Check if extraction result looks like a scanned/empty PDF */
+export function looksLikeScannedPdf(filePath: string, content: string): boolean {
+  const ext = extname(filePath).toLowerCase();
+  if (ext !== ".pdf") return false;
+  // Empty or near-empty content from a PDF suggests scanned pages
+  const trimmed = content.trim();
+  return trimmed.length < 50;
 }
 
 function formatOutput(

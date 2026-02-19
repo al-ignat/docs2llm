@@ -2,7 +2,7 @@ import * as p from "@clack/prompts";
 import { resolve, extname, dirname } from "path";
 import { statSync, existsSync, mkdirSync } from "fs";
 import { homedir } from "os";
-import { convertFile, type OutputFormat } from "./convert";
+import { convertFile, looksLikeScannedPdf, type OutputFormat } from "./convert";
 import { writeOutput } from "./output";
 import { buildPlan, ValidationError } from "./validate";
 import { scanForFiles, formatHint, type FileInfo } from "./scan";
@@ -344,7 +344,21 @@ async function convert(
       finalOutputPath = result.outputPath ?? plan.outputPath;
       s.stop(`${result.sourcePath} → ${finalOutputPath}`);
     } else {
-      const result = await convertFile(filePath, plan.format);
+      let result = await convertFile(filePath, plan.format);
+
+      // Auto-detect scanned PDFs and offer OCR
+      if (looksLikeScannedPdf(filePath, result.content)) {
+        s.stop("Scanned document detected");
+        const useOcr = await p.confirm({
+          message: "This looks like a scanned document. Extract text with OCR?",
+          initialValue: true,
+        });
+        if (!p.isCancel(useOcr) && useOcr) {
+          s.start("Running OCR…");
+          result = await convertFile(filePath, plan.format, { ocr: { enabled: true, force: true } });
+        }
+      }
+
       outputContent = result.formatted;
       await writeOutput(plan.outputPath, result.formatted);
 
@@ -352,6 +366,11 @@ async function convert(
       const stats = getTokenStats(result.content);
       const fits = checkLLMFit(stats.tokens);
       s.stop(`${result.sourcePath} → ${plan.outputPath} (${formatTokenStats(stats)})`);
+
+      // Quality warning
+      if (result.qualityScore != null && result.qualityScore < 0.5) {
+        p.log.warn("Some text may not have been extracted correctly. Check the output.");
+      }
 
       // LLM fit indicator (show when output is substantial)
       if (stats.tokens > 1000) {

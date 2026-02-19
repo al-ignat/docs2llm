@@ -4,7 +4,7 @@ import { resolve } from "path";
 import { statSync, mkdirSync, existsSync } from "fs";
 import { createInterface } from "readline";
 import { homedir } from "os";
-import { convertFile, type OutputFormat } from "./convert";
+import { convertFile, looksLikeScannedPdf, type OutputFormat, type OcrOptions } from "./convert";
 import { writeOutput } from "./output";
 import { buildPlan, ValidationError } from "./validate";
 import { runInteractive } from "./interactive";
@@ -44,9 +44,10 @@ function parseArgs(argv: string[]) {
   let command: string | null = null;
   let template: string | null = null;
   let isGlobal = false;
+  let ocr: OcrOptions | undefined;
 
   // Check for subcommand as first positional arg
-  if (args.length > 0 && (args[0] === "init" || args[0] === "config" || args[0] === "paste" || args[0] === "open")) {
+  if (args.length > 0 && (args[0] === "init" || args[0] === "config" || args[0] === "paste" || args[0] === "open" || args[0] === "formats")) {
     command = args[0];
     for (let i = 1; i < args.length; i++) {
       if (args[i] === "--global") isGlobal = true;
@@ -102,6 +103,20 @@ function parseArgs(argv: string[]) {
         console.error("Missing output path.");
         process.exit(1);
       }
+    } else if (arg === "--ocr") {
+      ocr = { ...ocr, enabled: true };
+    } else if (arg === "--ocr=force") {
+      ocr = { ...ocr, enabled: true, force: true };
+    } else if (arg.startsWith("--ocr-lang=")) {
+      const lang = arg.split("=")[1];
+      ocr = { ...ocr, enabled: true, language: lang };
+    } else if (arg === "--ocr-lang") {
+      const lang = args[++i];
+      if (!lang) {
+        console.error("Missing OCR language code.");
+        process.exit(1);
+      }
+      ocr = { ...ocr, enabled: true, language: lang };
     } else if (arg === "-h" || arg === "--help") {
       printHelp();
       process.exit(0);
@@ -110,7 +125,7 @@ function parseArgs(argv: string[]) {
     }
   }
 
-  return { input, format, output, formatExplicit, force, pandocArgs, command, template, isGlobal, pasteOpts: undefined as PasteOptions | undefined };
+  return { input, format, output, formatExplicit, force, pandocArgs, command, template, isGlobal, ocr, pasteOpts: undefined as PasteOptions | undefined };
 }
 
 function printHelp() {
@@ -138,6 +153,9 @@ Usage:
   Web UI:
   docs2llm open                     Launch web UI at localhost:3000
 
+  Info:
+  docs2llm formats                  List all supported formats
+
   Config:
   docs2llm init                     Create local .docs2llm.yaml
   docs2llm init --global            Create global config
@@ -150,13 +168,57 @@ Options:
   -t, --template <name>   Use a named template from config
   -o, --output <path>     Output directory
   -y, --force             Overwrite output files without prompting
+  --ocr                   Enable OCR for scanned documents
+  --ocr=force             Force OCR even if text is available
+  --ocr-lang <code>       OCR language (e.g., deu, fra, jpn)
   --                      Pass remaining args to Pandoc (outbound only)
   -h, --help              Show this help
 `);
 }
 
+function printFormats() {
+  console.log(`
+docs2llm — Supported formats
+
+Documents:
+  .docx  Word document
+  .doc   Word document (legacy)
+  .pptx  PowerPoint presentation
+  .ppt   PowerPoint (legacy)
+  .xlsx  Excel spreadsheet
+  .xls   Excel (legacy)
+  .odt   OpenDocument text
+  .odp   OpenDocument presentation
+  .ods   OpenDocument spreadsheet
+  .rtf   Rich Text Format
+  .pdf   PDF document (with OCR support for scanned pages)
+
+Text & Data:
+  .txt   Plain text
+  .csv   Comma-separated values
+  .tsv   Tab-separated values
+  .html  Web page
+  .xml   XML document
+  .md    Markdown
+
+Email:
+  .eml   Email message
+  .msg   Outlook message
+
+eBooks:
+  .epub  EPUB ebook
+  .mobi  Kindle ebook
+
+Images (via OCR):
+  .png .jpg .jpeg .tiff .bmp .gif .webp
+
+Tip: most source code files are also supported.
+     Use --ocr for scanned PDFs and images.
+`);
+}
+
 async function main() {
-  const { input, format, output, formatExplicit, force, pandocArgs, command, template, isGlobal, pasteOpts } =
+  const { input, format, output, formatExplicit, force, pandocArgs, command, template, isGlobal, ocr, pasteOpts } =
     parseArgs(Bun.argv);
 
   // Handle subcommands
@@ -170,6 +232,10 @@ async function main() {
   }
   if (command === "paste") {
     await runPaste(pasteOpts ?? {});
+    return;
+  }
+  if (command === "formats") {
+    printFormats();
     return;
   }
   if (command === "open") {
@@ -242,12 +308,12 @@ async function main() {
   if (stat.isFile()) {
     await convertSingleFile(
       resolvedInput, effectiveFormat, effectiveOutputDir,
-      effectiveFormatExplicit, effectiveForce, pandocArgs, config, template
+      effectiveFormatExplicit, effectiveForce, pandocArgs, config, template, ocr
     );
   } else if (stat.isDirectory()) {
     await convertFolder(
       resolvedInput, effectiveFormat, effectiveOutputDir,
-      effectiveFormatExplicit, effectiveForce, pandocArgs, config, template
+      effectiveFormatExplicit, effectiveForce, pandocArgs, config, template, ocr
     );
   } else {
     console.error(
@@ -266,7 +332,8 @@ async function convertSingleFile(
   force?: boolean,
   cliPandocArgs?: string[],
   config?: Config,
-  templateName?: string | null
+  templateName?: string | null,
+  ocr?: OcrOptions
 ) {
   let plan;
   try {
@@ -309,16 +376,31 @@ async function convertSingleFile(
       });
       console.log(`✓ ${filePath} → ${result.outputPath}`);
     } else {
-      const result = await convertFile(filePath, plan.format);
+      let result = await convertFile(filePath, plan.format, { ocr });
+
+      // Auto-detect scanned PDFs
+      if (!ocr?.enabled && looksLikeScannedPdf(filePath, result.content)) {
+        console.log("⚠ This looks like a scanned document. Retrying with OCR…");
+        result = await convertFile(filePath, plan.format, { ocr: { enabled: true, force: true } });
+      }
+
       await writeOutput(plan.outputPath, result.formatted);
       const stats = getTokenStats(result.content);
       console.log(`✓ ${filePath} → ${plan.outputPath} (${formatTokenStats(stats)})`);
+
+      // Quality warning
+      if (result.qualityScore != null && result.qualityScore < 0.5) {
+        console.log("⚠ Some text may not have been extracted correctly. Check the output.");
+      }
     }
   } catch (err: any) {
     const msg = err.message ?? String(err);
     console.error(`✗ ${filePath}: ${msg}`);
     if (msg.includes("Pandoc")) {
       console.error("  Tip: install Pandoc with: brew install pandoc");
+    }
+    if (msg.includes("Unsupported") || msg.includes("format")) {
+      console.error("  Tip: run docs2llm formats to see what's supported.");
     }
     process.exit(1);
   }
@@ -332,7 +414,8 @@ async function convertFolder(
   force?: boolean,
   cliPandocArgs?: string[],
   config?: Config,
-  templateName?: string | null
+  templateName?: string | null,
+  ocr?: OcrOptions
 ) {
   const { readdirSync } = await import("fs");
   const { join, basename } = await import("path");
@@ -418,10 +501,17 @@ async function convertFolder(
         });
         console.log(`✓ ${file} → ${result.outputPath}`);
       } else {
-        const result = await convertFile(file, plan.format);
+        let result = await convertFile(file, plan.format, { ocr });
+        if (!ocr?.enabled && looksLikeScannedPdf(file, result.content)) {
+          console.log(`⚠ ${file}: scanned document detected, retrying with OCR…`);
+          result = await convertFile(file, plan.format, { ocr: { enabled: true, force: true } });
+        }
         await writeOutput(plan.outputPath, result.formatted);
         const stats = getTokenStats(result.content);
         console.log(`✓ ${file} → ${plan.outputPath} (${formatTokenStats(stats)})`);
+        if (result.qualityScore != null && result.qualityScore < 0.5) {
+          console.log(`  ⚠ Low quality extraction. Check the output.`);
+        }
       }
       ok++;
     } catch (err: any) {
