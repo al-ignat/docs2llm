@@ -32,7 +32,7 @@ async function pickConfigTarget(): Promise<string | null> {
 }
 
 export async function runConfigWizard() {
-  p.intro("doc2llm config");
+  p.intro("docs2llm config");
 
   const globalExists = existsSync(GLOBAL_CONFIG_PATH);
   const localPath = findLocalConfig();

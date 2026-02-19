@@ -20,11 +20,11 @@ export interface Config {
   templates?: Record<string, TemplateConfig>;
 }
 
-export const LOCAL_CONFIG_NAME = ".doc2llm.yaml";
+export const LOCAL_CONFIG_NAME = ".docs2llm.yaml";
 export const GLOBAL_CONFIG_PATH = join(
   homedir(),
   ".config",
-  "doc2llm",
+  "docs2llm",
   "config.yaml"
 );
 

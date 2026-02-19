@@ -1,4 +1,4 @@
-# doc2llm
+# docs2llm
 
 CLI tool that converts documents (DOCX, PPTX, XLSX, PDF, images, and 75+ other formats) into LLM-friendly text — and converts Markdown back into DOCX, PPTX, or HTML. Runs instantly via `bunx`, with both interactive guided mode and quick one-liner usage.
 
@@ -8,33 +8,33 @@ Powered by [Kreuzberg](https://kreuzberg.dev) for inbound extraction and [Pandoc
 
 ```bash
 # Convert a file (outputs markdown by default)
-bunx doc2llm report.docx
+bunx docs2llm report.docx
 
 # Interactive mode — auto-discovers files to convert
-bunx doc2llm
+bunx docs2llm
 
 # With options
-bunx doc2llm report.docx -f json -o ./output/
+bunx docs2llm report.docx -f json -o ./output/
 
 # Convert a whole folder
-bunx doc2llm ./docs/ -f yaml
+bunx docs2llm ./docs/ -f yaml
 
 # Clipboard → Markdown (macOS)
-bunx doc2llm paste              # interactive: choose clipboard/stdout/file
-bunx doc2llm paste --copy       # convert and copy back to clipboard
-bunx doc2llm paste --stdout     # print to terminal
-bunx doc2llm paste -o snippet.md
+bunx docs2llm paste              # interactive: choose clipboard/stdout/file
+bunx docs2llm paste --copy       # convert and copy back to clipboard
+bunx docs2llm paste --stdout     # print to terminal
+bunx docs2llm paste -o snippet.md
 
 # Outbound: Markdown → documents (requires Pandoc)
-bunx doc2llm notes.md -f docx
-bunx doc2llm notes.md -f pptx
-bunx doc2llm notes.md -f html
+bunx docs2llm notes.md -f docx
+bunx docs2llm notes.md -f pptx
+bunx docs2llm notes.md -f html
 
 # Use a named template from config
-bunx doc2llm notes.md -t report
+bunx docs2llm notes.md -t report
 
 # Pass extra args to Pandoc
-bunx doc2llm notes.md -f docx -- --toc --reference-doc=template.docx
+bunx docs2llm notes.md -f docx -- --toc --reference-doc=template.docx
 ```
 
 ## Install
@@ -47,25 +47,25 @@ brew install pandoc
 
 ```bash
 # Use directly — no install needed
-bunx doc2llm
+bunx docs2llm
 
 # Or install globally
-bun install -g doc2llm
+bun install -g docs2llm
 ```
 
 ## Usage
 
 ```
-doc2llm                          Interactive mode
-doc2llm <file>                   Convert a file to .md
-doc2llm <folder>                 Convert all files in folder
-doc2llm <file> -f json -o ./out  Convert with options
-doc2llm notes.md -f docx         Markdown → Word (outbound)
-doc2llm notes.md -t report       Use a named template
-doc2llm paste                    Clipboard → Markdown (macOS)
-doc2llm paste --copy             Convert and copy back to clipboard
-doc2llm init                     Create local config
-doc2llm init --global            Create global config
+docs2llm                          Interactive mode
+docs2llm <file>                   Convert a file to .md
+docs2llm <folder>                 Convert all files in folder
+docs2llm <file> -f json -o ./out  Convert with options
+docs2llm notes.md -f docx         Markdown → Word (outbound)
+docs2llm notes.md -t report       Use a named template
+docs2llm paste                    Clipboard → Markdown (macOS)
+docs2llm paste --copy             Convert and copy back to clipboard
+docs2llm init                     Create local config
+docs2llm init --global            Create global config
 
 Options:
   -f, --format <fmt>      Output format (default: md)
@@ -80,7 +80,7 @@ Options:
 
 ## Interactive Mode
 
-Running `doc2llm` with no arguments launches a smart file picker:
+Running `docs2llm` with no arguments launches a smart file picker:
 
 - Scans your current directory for convertible files
 - Scans `~/Downloads` for recently modified documents (last 24h)
@@ -92,10 +92,10 @@ Running `doc2llm` with no arguments launches a smart file picker:
 Copy a chunk of a webpage, then:
 
 ```bash
-doc2llm paste           # interactive prompt: clipboard / stdout / file
-doc2llm paste --copy    # convert HTML and copy clean markdown back
-doc2llm paste --stdout  # pipe-friendly output
-doc2llm paste -o note.md
+docs2llm paste           # interactive prompt: clipboard / stdout / file
+docs2llm paste --copy    # convert HTML and copy clean markdown back
+docs2llm paste --stdout  # pipe-friendly output
+docs2llm paste -o note.md
 ```
 
 Prefers the HTML clipboard flavor (preserves headings, links, lists, code blocks). Falls back to plain text if no HTML is present.
@@ -142,11 +142,11 @@ Requires [Pandoc](https://pandoc.org) installed (`brew install pandoc`).
 Create a config file to set defaults, per-format Pandoc args, and named templates. Run the init wizard:
 
 ```bash
-doc2llm init            # creates .doc2llm.yaml in current directory
-doc2llm init --global   # creates ~/.config/doc2llm/config.yaml
+docs2llm init            # creates .docs2llm.yaml in current directory
+docs2llm init --global   # creates ~/.config/docs2llm/config.yaml
 ```
 
-Local config overrides global (field-by-field merge). Example `.doc2llm.yaml`:
+Local config overrides global (field-by-field merge). Example `.docs2llm.yaml`:
 
 ```yaml
 defaults:
@@ -177,8 +177,8 @@ templates:
 Use a template with `-t`:
 
 ```bash
-doc2llm notes.md -t report    # uses template's format + pandoc args
-doc2llm notes.md -t report -f html  # explicit -f overrides template format
+docs2llm notes.md -t report    # uses template's format + pandoc args
+docs2llm notes.md -t report -f html  # explicit -f overrides template format
 ```
 
 Templates also appear in the interactive mode format picker.

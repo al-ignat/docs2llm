@@ -3,4 +3,4 @@ bun.lock
 *.log
 .DS_Store
 CLAUDE.md
-.doc2llm.yaml
+.docs2llm.yaml

@@ -14,7 +14,7 @@ import type { OutputFormat } from "./convert";
 export async function runInit(isGlobal: boolean) {
   const targetPath = isGlobal ? GLOBAL_CONFIG_PATH : LOCAL_CONFIG_NAME;
 
-  p.intro("doc2llm init");
+  p.intro("docs2llm init");
 
   if (existsSync(targetPath)) {
     const existing = parseConfigFile(targetPath);

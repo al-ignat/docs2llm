@@ -13,7 +13,7 @@ export type FormatChoice =
   | { kind: "template"; name: string; format: OutputFormat };
 
 export async function runInteractive(config?: Config) {
-  p.intro("doc2llm");
+  p.intro("docs2llm");
 
   const filePath = await pickFile();
   if (!filePath) return;
@@ -29,7 +29,7 @@ export async function runInteractive(config?: Config) {
 
   // P2: first-run hint
   if (!findLocalConfig() && !existsSync(GLOBAL_CONFIG_PATH)) {
-    p.log.info("Tip: run doc2llm init to save your preferences.");
+    p.log.info("Tip: run docs2llm init to save your preferences.");
   }
 
   p.outro("Done!");
