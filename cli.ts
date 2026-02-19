@@ -3,6 +3,7 @@
 import { resolve } from "path";
 import { statSync, mkdirSync, existsSync } from "fs";
 import { createInterface } from "readline";
+import { homedir } from "os";
 import { convertFile, type OutputFormat } from "./convert";
 import { writeOutput } from "./output";
 import { buildPlan, ValidationError } from "./validate";
@@ -16,6 +17,7 @@ import {
 import { runInit } from "./init";
 import { runConfigWizard } from "./config-wizard";
 import { runPaste, type PasteOptions } from "./paste";
+import { getTokenStats, formatTokenStats } from "./tokens";
 
 function confirm(prompt: string): Promise<boolean> {
   return new Promise((resolve) => {
@@ -84,7 +86,11 @@ function parseArgs(argv: string[]) {
     } else if (arg === "-f" || arg === "--format") {
       const val = args[++i];
       if (!val || !VALID_FORMATS.has(val)) {
-        console.error(`Invalid format: ${val ?? "(empty)"}. Use: md, json, yaml, docx, pptx, html`);
+        console.error(
+          `✗ Unknown format '${val ?? "(empty)"}'.\n` +
+          `  Inbound (document → text): md, json, yaml\n` +
+          `  Outbound (Markdown → document): docx, pptx, html`
+        );
         process.exit(1);
       }
       format = val as OutputFormat;
@@ -203,7 +209,12 @@ async function main() {
   try {
     stat = statSync(resolvedInput);
   } catch {
-    console.error(`Not found: ${input}`);
+    const cwd = process.cwd().replace(homedir(), "~");
+    console.error(
+      `✗ Can't find '${input}'.\n` +
+      `  Current folder: ${cwd}\n` +
+      `  Tip: drag the file from Finder into this terminal, or use an absolute path.`
+    );
     process.exit(1);
   }
 
@@ -222,7 +233,10 @@ async function main() {
       effectiveFormatExplicit, effectiveForce, pandocArgs, config, template
     );
   } else {
-    console.error(`Not a file or folder: ${input}`);
+    console.error(
+      `✗ '${input}' is not a file or folder.\n` +
+      `  Tip: check the path and try again.`
+    );
     process.exit(1);
   }
 }
@@ -247,6 +261,9 @@ async function convertSingleFile(
   } catch (err: any) {
     if (err instanceof ValidationError) {
       console.error(`✗ ${err.message}`);
+      if (err.message.includes("Outbound formats")) {
+        console.error("  Tip: only .md files can be converted to docx/pptx/html.");
+      }
       process.exit(1);
     }
     throw err;
@@ -277,10 +294,15 @@ async function convertSingleFile(
     } else {
       const result = await convertFile(filePath, plan.format);
       await writeOutput(plan.outputPath, result.formatted);
-      console.log(`✓ ${filePath} → ${plan.outputPath}`);
+      const stats = getTokenStats(result.content);
+      console.log(`✓ ${filePath} → ${plan.outputPath} (${formatTokenStats(stats)})`);
     }
   } catch (err: any) {
-    console.error(`✗ ${filePath}: ${err.message ?? err}`);
+    const msg = err.message ?? String(err);
+    console.error(`✗ ${filePath}: ${msg}`);
+    if (msg.includes("Pandoc")) {
+      console.error("  Tip: install Pandoc with: brew install pandoc");
+    }
     process.exit(1);
   }
 }
@@ -381,7 +403,8 @@ async function convertFolder(
       } else {
         const result = await convertFile(file, plan.format);
         await writeOutput(plan.outputPath, result.formatted);
-        console.log(`✓ ${file} → ${plan.outputPath}`);
+        const stats = getTokenStats(result.content);
+        console.log(`✓ ${file} → ${plan.outputPath} (${formatTokenStats(stats)})`);
       }
       ok++;
     } catch (err: any) {
