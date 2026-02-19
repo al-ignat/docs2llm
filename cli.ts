@@ -1,11 +1,22 @@
 #!/usr/bin/env bun
 
 import { resolve } from "path";
-import { statSync, mkdirSync } from "fs";
+import { statSync, mkdirSync, existsSync } from "fs";
+import { createInterface } from "readline";
 import { convertFile, type OutputFormat } from "./convert";
 import { writeOutput } from "./output";
 import { buildPlan, ValidationError } from "./validate";
 import { runInteractive } from "./interactive";
+
+function confirm(prompt: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    rl.question(prompt, (answer) => {
+      rl.close();
+      resolve(answer.trim().toLowerCase() === "y");
+    });
+  });
+}
 
 const VALID_FORMATS = new Set(["md", "json", "yaml", "docx", "pptx", "html"]);
 
@@ -16,10 +27,17 @@ function parseArgs(argv: string[]) {
   let format: OutputFormat = "md";
   let output: string | null = null;
   let formatExplicit = false;
+  let force = false;
+  let pandocArgs: string[] = [];
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
-    if (arg === "-f" || arg === "--format") {
+    if (arg === "--") {
+      pandocArgs = args.slice(i + 1);
+      break;
+    } else if (arg === "--force" || arg === "-y") {
+      force = true;
+    } else if (arg === "-f" || arg === "--format") {
       const val = args[++i];
       if (!val || !VALID_FORMATS.has(val)) {
         console.error(`Invalid format: ${val ?? "(empty)"}. Use: md, json, yaml, docx, pptx, html`);
@@ -41,7 +59,7 @@ function parseArgs(argv: string[]) {
     }
   }
 
-  return { input, format, output, formatExplicit };
+  return { input, format, output, formatExplicit, force, pandocArgs };
 }
 
 function printHelp() {
@@ -64,12 +82,14 @@ Options:
                         Inbound:  md, json, yaml
                         Outbound: docx, pptx, html (requires Pandoc)
   -o, --output <path>  Output directory
+  -y, --force          Overwrite output files without prompting
+  --                   Pass remaining args to Pandoc (outbound only)
   -h, --help           Show this help
 `);
 }
 
 async function main() {
-  const { input, format, output, formatExplicit } = parseArgs(Bun.argv);
+  const { input, format, output, formatExplicit, force, pandocArgs } = parseArgs(Bun.argv);
 
   if (!input) {
     await runInteractive();
@@ -91,9 +111,9 @@ async function main() {
   }
 
   if (stat.isFile()) {
-    await convertSingleFile(resolvedInput, format, outputDir, formatExplicit);
+    await convertSingleFile(resolvedInput, format, outputDir, formatExplicit, force, pandocArgs);
   } else if (stat.isDirectory()) {
-    await convertFolder(resolvedInput, format, outputDir, formatExplicit);
+    await convertFolder(resolvedInput, format, outputDir, formatExplicit, force, pandocArgs);
   } else {
     console.error(`Not a file or folder: ${input}`);
     process.exit(1);
@@ -104,17 +124,28 @@ async function convertSingleFile(
   filePath: string,
   format: OutputFormat,
   outputDir?: string,
-  formatExplicit?: boolean
+  formatExplicit?: boolean,
+  force?: boolean,
+  pandocArgs?: string[]
 ) {
   let plan;
   try {
-    plan = buildPlan(filePath, format, { outputDir, formatExplicit });
+    plan = buildPlan(filePath, format, { outputDir, formatExplicit, pandocArgs });
   } catch (err: any) {
     if (err instanceof ValidationError) {
       console.error(`✗ ${err.message}`);
       process.exit(1);
     }
     throw err;
+  }
+
+  if (pandocArgs?.length && plan.direction === "inbound") {
+    console.log(`⚠ Pandoc args ignored for inbound conversion (${filePath})`);
+  }
+
+  if (!force && existsSync(plan.outputPath)) {
+    const ok = await confirm(`Output file already exists: ${plan.outputPath}\nOverwrite? [y/N] `);
+    if (!ok) process.exit(0);
   }
 
   try {
@@ -139,10 +170,12 @@ async function convertFolder(
   dir: string,
   format: OutputFormat,
   outputDir?: string,
-  formatExplicit?: boolean
+  formatExplicit?: boolean,
+  force?: boolean,
+  pandocArgs?: string[]
 ) {
   const { readdirSync } = await import("fs");
-  const { join } = await import("path");
+  const { join, basename } = await import("path");
 
   const files = readdirSync(dir, { withFileTypes: true })
     .filter((e) => e.isFile() && !e.name.startsWith("."))
@@ -153,13 +186,43 @@ async function convertFolder(
     return;
   }
 
+  if (pandocArgs?.length) {
+    // Check if any file would be inbound — warn once
+    const hasInbound = files.some((f) => {
+      try {
+        return buildPlan(f, format, { outputDir, formatExplicit, pandocArgs }).direction === "inbound";
+      } catch { return false; }
+    });
+    if (hasInbound) {
+      console.log("⚠ Pandoc args ignored for inbound conversions.");
+    }
+  }
+
+  // Collect files that would be overwritten
+  if (!force) {
+    const overwrites: string[] = [];
+    for (const file of files) {
+      try {
+        const plan = buildPlan(file, format, { outputDir, formatExplicit, pandocArgs });
+        if (existsSync(plan.outputPath)) {
+          overwrites.push(basename(plan.outputPath));
+        }
+      } catch { /* skip — will be handled during conversion */ }
+    }
+    if (overwrites.length > 0) {
+      console.log(`${overwrites.length} file(s) would be overwritten:\n  ${overwrites.join(", ")}`);
+      const ok = await confirm("Continue? [y/N] ");
+      if (!ok) process.exit(0);
+    }
+  }
+
   let ok = 0;
   let fail = 0;
   let skipped = 0;
   for (const file of files) {
     let plan;
     try {
-      plan = buildPlan(file, format, { outputDir, formatExplicit });
+      plan = buildPlan(file, format, { outputDir, formatExplicit, pandocArgs });
     } catch (err: any) {
       if (err instanceof ValidationError) {
         console.log(`⊘ ${file}: ${err.message}`);

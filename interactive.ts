@@ -1,6 +1,6 @@
 import * as p from "@clack/prompts";
 import { resolve, extname } from "path";
-import { statSync } from "fs";
+import { statSync, existsSync } from "fs";
 import { convertFile, type OutputFormat } from "./convert";
 import { writeOutput } from "./output";
 import { buildPlan, ValidationError } from "./validate";
@@ -149,6 +149,16 @@ async function convert(filePath: string, format: OutputFormat) {
       return;
     }
     throw err;
+  }
+
+  if (existsSync(plan.outputPath)) {
+    const overwrite = await p.confirm({
+      message: `Output file already exists: ${plan.outputPath}\nOverwrite?`,
+    });
+    if (p.isCancel(overwrite) || !overwrite) {
+      p.cancel("Cancelled.");
+      return;
+    }
   }
 
   s.start("Converting…");

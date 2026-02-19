@@ -24,7 +24,7 @@ export class ValidationError extends Error {
 export function buildPlan(
   inputPath: string,
   format: OutputFormat,
-  options?: { outputDir?: string; formatExplicit?: boolean }
+  options?: { outputDir?: string; formatExplicit?: boolean; pandocArgs?: string[] }
 ): ConversionPlan {
   const ext = extname(inputPath).toLowerCase();
   const isMarkdownInput = ext === ".md";
@@ -57,7 +57,7 @@ export function buildPlan(
   }
 
   // Pandoc flags
-  const pandocArgs: string[] = [];
+  const pandocArgs: string[] = [...(options?.pandocArgs ?? [])];
   if (direction === "outbound" && format === "html") {
     pandocArgs.push("--standalone");
   }
