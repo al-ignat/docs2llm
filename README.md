@@ -19,6 +19,12 @@ bunx con-the-doc report.docx -f json -o ./output/
 # Convert a whole folder
 bunx con-the-doc ./docs/ -f yaml
 
+# Clipboard → Markdown (macOS)
+bunx con-the-doc paste              # interactive: choose clipboard/stdout/file
+bunx con-the-doc paste --copy       # convert and copy back to clipboard
+bunx con-the-doc paste --stdout     # print to terminal
+bunx con-the-doc paste -o snippet.md
+
 # Outbound: Markdown → documents (requires Pandoc)
 bunx con-the-doc notes.md -f docx
 bunx con-the-doc notes.md -f pptx
@@ -56,6 +62,8 @@ con-the-doc <folder>                 Convert all files in folder
 con-the-doc <file> -f json -o ./out  Convert with options
 con-the-doc notes.md -f docx         Markdown → Word (outbound)
 con-the-doc notes.md -t report       Use a named template
+con-the-doc paste                    Clipboard → Markdown (macOS)
+con-the-doc paste --copy             Convert and copy back to clipboard
 con-the-doc init                     Create local config
 con-the-doc init --global            Create global config
 
@@ -78,6 +86,19 @@ Running `con-the-doc` with no arguments launches a smart file picker:
 - Scans `~/Downloads` for recently modified documents (last 24h)
 - Shows results sorted by recency — pick with arrow keys
 - Falls back to manual path input (supports drag-and-drop from Finder)
+
+## Clipboard → Markdown (macOS)
+
+Copy a chunk of a webpage, then:
+
+```bash
+con-the-doc paste           # interactive prompt: clipboard / stdout / file
+con-the-doc paste --copy    # convert HTML and copy clean markdown back
+con-the-doc paste --stdout  # pipe-friendly output
+con-the-doc paste -o note.md
+```
+
+Prefers the HTML clipboard flavor (preserves headings, links, lists, code blocks). Falls back to plain text if no HTML is present.
 
 ## Output Formats
 

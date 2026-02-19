@@ -2,6 +2,11 @@
   "name": "con-the-doc",
   "version": "1.0.0",
   "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/al-ignat/convert-the-doc.git"
+  },
   "bin": {
     "con-the-doc": "cli.ts"
   },
