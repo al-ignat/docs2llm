@@ -141,7 +141,7 @@ export async function convertFile(
   const result = await extract(filePath, null, config);
 
   const textContent = result.content;
-  const formatted = formatOutput(textContent, filePath, result.mimeType, result.metadata, format);
+  const formatted = formatOutput(textContent, filePath, result.mimeType, result.metadata, format, result.qualityScore);
 
   return {
     content: textContent,
@@ -166,18 +166,30 @@ function formatOutput(
   source: string,
   mimeType: string,
   metadata: Record<string, unknown>,
-  format: OutputFormat
+  format: OutputFormat,
+  qualityScore?: number | null,
 ): string {
   if (format === "md") {
     return content;
   }
 
-  const data = {
+  // Rich structured output with token stats
+  const { countWords, estimateTokens } = require("./tokens");
+  const words = countWords(content);
+  const tokens = estimateTokens(content);
+
+  const data: Record<string, unknown> = {
     source: source,
     mimeType: mimeType,
+    words,
+    tokens,
     metadata: metadata,
     content: content,
   };
+
+  if (qualityScore != null) {
+    data.qualityScore = qualityScore;
+  }
 
   if (format === "json") {
     return JSON.stringify(data, null, 2);

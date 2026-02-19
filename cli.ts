@@ -21,6 +21,7 @@ import { getTokenStats, formatTokenStats } from "./tokens";
 import { startServer } from "./api";
 import { fetchAndConvert } from "./fetch";
 import { startWatcher } from "./watch";
+import { startMcpServer } from "./mcp";
 
 function confirm(prompt: string): Promise<boolean> {
   return new Promise((resolve) => {
@@ -50,9 +51,15 @@ function parseArgs(argv: string[]) {
 
   // Watch subcommand options
   let watchTo: string | null = null;
+  // stdin/stdout flags
+  let useStdin = false;
+  let useStdout = false;
+  // Chunking flags
+  let chunks = false;
+  let chunkSize: number | null = null;
 
   // Check for subcommand as first positional arg
-  if (args.length > 0 && (args[0] === "init" || args[0] === "config" || args[0] === "paste" || args[0] === "open" || args[0] === "formats" || args[0] === "watch")) {
+  if (args.length > 0 && (args[0] === "init" || args[0] === "config" || args[0] === "paste" || args[0] === "open" || args[0] === "formats" || args[0] === "watch" || args[0] === "serve")) {
     command = args[0];
     for (let i = 1; i < args.length; i++) {
       if (args[i] === "--global") isGlobal = true;
@@ -133,6 +140,18 @@ function parseArgs(argv: string[]) {
         process.exit(1);
       }
       ocr = { ...ocr, enabled: true, language: lang };
+    } else if (arg === "--stdin") {
+      useStdin = true;
+    } else if (arg === "--stdout") {
+      useStdout = true;
+    } else if (arg === "--chunks") {
+      chunks = true;
+    } else if (arg.startsWith("--chunk-size=")) {
+      chunkSize = parseInt(arg.split("=")[1], 10);
+      chunks = true;
+    } else if (arg === "--chunk-size") {
+      chunkSize = parseInt(args[++i], 10);
+      chunks = true;
     } else if (arg === "-h" || arg === "--help") {
       printHelp();
       process.exit(0);
@@ -141,7 +160,7 @@ function parseArgs(argv: string[]) {
     }
   }
 
-  return { input, format, output, formatExplicit, force, pandocArgs, command, template, isGlobal, ocr, pasteOpts: undefined as PasteOptions | undefined, watchTo: null as string | null };
+  return { input, format, output, formatExplicit, force, pandocArgs, command, template, isGlobal, ocr, pasteOpts: undefined as PasteOptions | undefined, watchTo: null as string | null, useStdin, useStdout, chunks, chunkSize };
 }
 
 function printHelp() {
@@ -167,8 +186,15 @@ Usage:
   docs2llm paste --stdout           Convert and print to terminal
   docs2llm paste -o <file>          Convert and save to file
 
+  Piping:
+  cat report.pdf | docs2llm --stdin           Read from stdin
+  cat report.pdf | docs2llm --stdin --stdout  Read from stdin, write to stdout
+
   Watch:
   docs2llm watch <dir> --to <dir>   Auto-convert new files in folder
+
+  MCP:
+  docs2llm serve                    Start MCP server for Claude Desktop / Cursor
 
   Web UI:
   docs2llm open                     Launch web UI at localhost:3000
@@ -191,6 +217,10 @@ Options:
   --ocr                   Enable OCR for scanned documents
   --ocr=force             Force OCR even if text is available
   --ocr-lang <code>       OCR language (e.g., deu, fra, jpn)
+  --stdin                 Read input from stdin instead of a file
+  --stdout                Write output to stdout instead of a file
+  --chunks                Split output into chunks (for RAG pipelines)
+  --chunk-size <tokens>   Target tokens per chunk (default: 4000)
   --                      Pass remaining args to Pandoc (outbound only)
   -h, --help              Show this help
 `);
@@ -238,7 +268,7 @@ Tip: most source code files are also supported.
 }
 
 async function main() {
-  const { input, format, output, formatExplicit, force, pandocArgs, command, template, isGlobal, ocr, pasteOpts, watchTo } =
+  const { input, format, output, formatExplicit, force, pandocArgs, command, template, isGlobal, ocr, pasteOpts, watchTo, useStdin, useStdout, chunks, chunkSize } =
     parseArgs(Bun.argv);
 
   // Handle subcommands
@@ -277,6 +307,10 @@ async function main() {
     startWatcher(watchDir, outDir);
     return;
   }
+  if (command === "serve") {
+    await startMcpServer();
+    return;
+  }
 
   // Load config
   const config = loadConfig();
@@ -308,6 +342,12 @@ async function main() {
       ? resolve(config.defaults.outputDir)
       : undefined;
 
+  // stdin mode: read binary data from stdin and convert
+  if (useStdin) {
+    await convertStdin(format, useStdout, effectiveOutputDir, effectiveForce, ocr, chunks, chunkSize);
+    return;
+  }
+
   if (!input) {
     await runInteractive(config);
     return;
@@ -315,7 +355,7 @@ async function main() {
 
   // URL detection: fetch and convert web pages or remote documents
   if (input.startsWith("http://") || input.startsWith("https://")) {
-    await convertUrl(input, effectiveOutputDir, effectiveForce);
+    await convertUrl(input, effectiveOutputDir, effectiveForce, useStdout);
     return;
   }
 
@@ -341,7 +381,8 @@ async function main() {
   if (stat.isFile()) {
     await convertSingleFile(
       resolvedInput, effectiveFormat, effectiveOutputDir,
-      effectiveFormatExplicit, effectiveForce, pandocArgs, config, template, ocr
+      effectiveFormatExplicit, effectiveForce, pandocArgs, config, template, ocr,
+      useStdout, chunks, chunkSize
     );
   } else if (stat.isDirectory()) {
     await convertFolder(
@@ -366,7 +407,10 @@ async function convertSingleFile(
   cliPandocArgs?: string[],
   config?: Config,
   templateName?: string | null,
-  ocr?: OcrOptions
+  ocr?: OcrOptions,
+  useStdout?: boolean,
+  chunks?: boolean,
+  chunkSize?: number | null,
 ) {
   let plan;
   try {
@@ -396,7 +440,7 @@ async function convertSingleFile(
     console.log(`⚠ Pandoc args ignored for inbound conversion (${filePath})`);
   }
 
-  if (!force && existsSync(plan.outputPath)) {
+  if (!useStdout && !force && existsSync(plan.outputPath)) {
     const ok = await confirm(`Output file already exists: ${plan.outputPath}\nOverwrite? [y/N] `);
     if (!ok) process.exit(0);
   }
@@ -413,8 +457,34 @@ async function convertSingleFile(
 
       // Auto-detect scanned PDFs
       if (!ocr?.enabled && looksLikeScannedPdf(filePath, result.content)) {
-        console.log("⚠ This looks like a scanned document. Retrying with OCR…");
+        if (!useStdout) console.log("⚠ This looks like a scanned document. Retrying with OCR…");
         result = await convertFile(filePath, plan.format, { ocr: { enabled: true, force: true } });
+      }
+
+      // --chunks mode: split and output as JSON
+      if (chunks) {
+        const { splitToFit } = await import("./tokens");
+        const targetSize = chunkSize || 4000;
+        const splitResult = splitToFit(result.content, targetSize);
+        const output = splitResult.parts.map((text, i) => ({
+          index: i,
+          content: text,
+          tokens: splitResult.tokensPerPart[i],
+        }));
+
+        if (useStdout) {
+          process.stdout.write(JSON.stringify(output, null, 2));
+        } else {
+          await writeOutput(plan.outputPath, JSON.stringify(output, null, 2));
+          console.log(`✓ ${filePath} → ${plan.outputPath} (${splitResult.parts.length} chunks)`);
+        }
+        return;
+      }
+
+      // --stdout mode: write to stdout
+      if (useStdout) {
+        process.stdout.write(result.formatted);
+        return;
       }
 
       await writeOutput(plan.outputPath, result.formatted);
@@ -498,58 +568,80 @@ async function convertFolder(
     }
   }
 
-  let ok = 0;
-  let fail = 0;
+  // Build plans for all files first
+  interface FilePlan {
+    file: string;
+    plan: ReturnType<typeof buildPlan>;
+  }
+  const filePlans: FilePlan[] = [];
   let skipped = 0;
+
   for (const file of files) {
-    let plan;
     try {
-      plan = buildPlan(file, format, {
+      const plan = buildPlan(file, format, {
         outputDir,
         formatExplicit,
         defaultMdFormat: config?.defaults?.format,
       });
+
+      // Resolve pandoc args for outbound
+      if (plan.direction === "outbound" && config) {
+        plan.pandocArgs = buildPandocArgs(
+          plan.format, config, templateName ?? undefined, cliPandocArgs
+        );
+        if (!plan.pandocArgs.length) plan.pandocArgs = undefined;
+      }
+
+      filePlans.push({ file, plan });
     } catch (err: any) {
       if (err instanceof ValidationError) {
         console.log(`⊘ ${file}: ${err.message}`);
         skipped++;
-        continue;
-      }
-      throw err;
-    }
-
-    // Resolve pandoc args for outbound
-    if (plan.direction === "outbound" && config) {
-      plan.pandocArgs = buildPandocArgs(
-        plan.format, config, templateName ?? undefined, cliPandocArgs
-      );
-      if (!plan.pandocArgs.length) plan.pandocArgs = undefined;
-    }
-
-    try {
-      if (plan.direction === "outbound") {
-        const result = await convertFile(file, plan.format, {
-          outputDir,
-          pandocArgs: plan.pandocArgs,
-        });
-        console.log(`✓ ${file} → ${result.outputPath}`);
       } else {
-        let result = await convertFile(file, plan.format, { ocr });
-        if (!ocr?.enabled && looksLikeScannedPdf(file, result.content)) {
-          console.log(`⚠ ${file}: scanned document detected, retrying with OCR…`);
-          result = await convertFile(file, plan.format, { ocr: { enabled: true, force: true } });
-        }
-        await writeOutput(plan.outputPath, result.formatted);
-        const stats = getTokenStats(result.content);
-        console.log(`✓ ${file} → ${plan.outputPath} (${formatTokenStats(stats)})`);
-        if (result.qualityScore != null && result.qualityScore < 0.5) {
-          console.log(`  ⚠ Low quality extraction. Check the output.`);
-        }
+        throw err;
       }
-      ok++;
-    } catch (err: any) {
-      console.error(`✗ ${file}: ${err.message ?? err}`);
-      fail++;
+    }
+  }
+
+  // Process files in parallel batches (concurrency = 4)
+  const BATCH_SIZE = 4;
+  let ok = 0;
+  let fail = 0;
+
+  for (let i = 0; i < filePlans.length; i += BATCH_SIZE) {
+    const batch = filePlans.slice(i, i + BATCH_SIZE);
+    const results = await Promise.allSettled(
+      batch.map(async ({ file, plan }) => {
+        if (plan.direction === "outbound") {
+          const result = await convertFile(file, plan.format, {
+            outputDir,
+            pandocArgs: plan.pandocArgs,
+          });
+          console.log(`✓ ${file} → ${result.outputPath}`);
+        } else {
+          let result = await convertFile(file, plan.format, { ocr });
+          if (!ocr?.enabled && looksLikeScannedPdf(file, result.content)) {
+            console.log(`⚠ ${file}: scanned document detected, retrying with OCR…`);
+            result = await convertFile(file, plan.format, { ocr: { enabled: true, force: true } });
+          }
+          await writeOutput(plan.outputPath, result.formatted);
+          const stats = getTokenStats(result.content);
+          console.log(`✓ ${file} → ${plan.outputPath} (${formatTokenStats(stats)})`);
+          if (result.qualityScore != null && result.qualityScore < 0.5) {
+            console.log(`  ⚠ Low quality extraction. Check the output.`);
+          }
+        }
+      })
+    );
+
+    for (let j = 0; j < results.length; j++) {
+      if (results[j].status === "fulfilled") {
+        ok++;
+      } else {
+        const reason = (results[j] as PromiseRejectedResult).reason;
+        console.error(`✗ ${batch[j].file}: ${reason?.message ?? reason}`);
+        fail++;
+      }
     }
   }
 
@@ -558,10 +650,18 @@ async function convertFolder(
   console.log(`\nDone: ${parts.join(", ")}.`);
 }
 
-async function convertUrl(url: string, outputDir?: string, force?: boolean) {
+async function convertUrl(url: string, outputDir?: string, force?: boolean, useStdout?: boolean) {
   const { basename: pathBasename } = await import("path");
 
   try {
+    if (!useStdout) console.log(`Fetching ${url}…`);
+    const result = await fetchAndConvert(url);
+
+    if (useStdout) {
+      process.stdout.write(result.content);
+      return;
+    }
+
     // Derive a filename from the URL
     let urlPath = new URL(url).pathname.replace(/\/$/, "");
     let name = pathBasename(urlPath) || "page";
@@ -575,8 +675,6 @@ async function convertUrl(url: string, outputDir?: string, force?: boolean) {
       if (!ok) process.exit(0);
     }
 
-    console.log(`Fetching ${url}…`);
-    const result = await fetchAndConvert(url);
     await writeOutput(outPath, result.content);
     const stats = getTokenStats(result.content);
     console.log(`✓ ${url} → ${outPath} (${formatTokenStats(stats)})`);
@@ -588,6 +686,105 @@ async function convertUrl(url: string, outputDir?: string, force?: boolean) {
     );
     process.exit(1);
   }
+}
+
+async function convertStdin(
+  format: OutputFormat,
+  useStdout: boolean,
+  outputDir?: string,
+  force?: boolean,
+  ocr?: OcrOptions,
+  chunks?: boolean,
+  chunkSize?: number | null,
+) {
+  const { convertBytes } = await import("./convert");
+
+  // Read all of stdin as bytes
+  const inputChunks: Uint8Array[] = [];
+  for await (const chunk of Bun.stdin.stream()) {
+    inputChunks.push(chunk);
+  }
+  const totalLength = inputChunks.reduce((sum, c) => sum + c.length, 0);
+  const data = new Uint8Array(totalLength);
+  let offset = 0;
+  for (const chunk of inputChunks) {
+    data.set(chunk, offset);
+    offset += chunk.length;
+  }
+
+  if (data.length === 0) {
+    console.error("✗ No data received on stdin.");
+    process.exit(1);
+  }
+
+  try {
+    // Auto-detect MIME type from magic bytes
+    const mime = detectMimeFromBytes(data);
+    const result = await convertBytes(data, mime, ocr);
+
+    const content = result.content;
+
+    if (chunks) {
+      const { splitToFit } = await import("./tokens");
+      const targetSize = chunkSize || 4000;
+      const splitResult = splitToFit(content, targetSize);
+      const output = splitResult.parts.map((text, i) => ({
+        index: i,
+        content: text,
+        tokens: splitResult.tokensPerPart[i],
+      }));
+      process.stdout.write(JSON.stringify(output, null, 2));
+      return;
+    }
+
+    if (useStdout) {
+      process.stdout.write(content);
+      return;
+    }
+
+    // Write to file
+    const outPath = outputDir ? resolve(outputDir, "stdin-output.md") : resolve("stdin-output.md");
+    if (!force && existsSync(outPath)) {
+      const ok = await confirm(`Output file already exists: ${outPath}\nOverwrite? [y/N] `);
+      if (!ok) process.exit(0);
+    }
+    await writeOutput(outPath, content);
+    const stats = getTokenStats(content);
+    console.log(`✓ stdin → ${outPath} (${formatTokenStats(stats)})`);
+  } catch (err: any) {
+    console.error(`✗ stdin: ${err.message ?? err}`);
+    process.exit(1);
+  }
+}
+
+function detectMimeFromBytes(data: Uint8Array): string {
+  // PDF: %PDF
+  if (data[0] === 0x25 && data[1] === 0x50 && data[2] === 0x44 && data[3] === 0x46) {
+    return "application/pdf";
+  }
+  // ZIP-based (docx, pptx, xlsx, epub, odt): PK\x03\x04
+  if (data[0] === 0x50 && data[1] === 0x4b && data[2] === 0x03 && data[3] === 0x04) {
+    return "application/zip";
+  }
+  // PNG
+  if (data[0] === 0x89 && data[1] === 0x50 && data[2] === 0x4e && data[3] === 0x47) {
+    return "image/png";
+  }
+  // JPEG
+  if (data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff) {
+    return "image/jpeg";
+  }
+  // GIF
+  if (data[0] === 0x47 && data[1] === 0x49 && data[2] === 0x46) {
+    return "image/gif";
+  }
+  // Try as text/HTML
+  const head = new TextDecoder().decode(data.slice(0, 256)).trim();
+  if (head.startsWith("<!") || head.startsWith("<html") || head.startsWith("<HTML")) {
+    return "text/html";
+  }
+  // Default to plain text
+  return "text/plain";
 }
 
 main();
