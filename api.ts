@@ -52,8 +52,16 @@ async function handleConvert(req: Request): Promise<Response> {
   const rawMime = file.type || guessMime(file.name);
   const mime = rawMime.split(";")[0].trim();
 
+  // Check for OCR options in form data
+  const ocrEnabled = formData.get("ocr") === "true" || formData.get("ocr") === "1";
+  const ocrForce = formData.get("ocr") === "force";
+  const ocrLang = formData.get("ocr_lang") as string | null;
+  const ocrOpts = (ocrEnabled || ocrForce || ocrLang)
+    ? { enabled: true, force: ocrForce, language: ocrLang ?? undefined }
+    : undefined;
+
   try {
-    const result = await convertBytes(bytes, mime);
+    const result = await convertBytes(bytes, mime, ocrOpts);
     const stats = getTokenStats(result.content);
     const fits = checkLLMFit(stats.tokens);
     return Response.json({
@@ -61,6 +69,7 @@ async function handleConvert(req: Request): Promise<Response> {
       filename: file.name,
       mimeType: result.mimeType,
       metadata: result.metadata,
+      qualityScore: result.qualityScore ?? null,
       words: stats.words,
       tokens: stats.tokens,
       fits: fits.map((f) => ({ name: f.name, limit: f.limit, fits: f.fits })),
