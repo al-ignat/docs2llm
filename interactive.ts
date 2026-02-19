@@ -7,13 +7,34 @@ import { writeOutput } from "./output";
 import { buildPlan, ValidationError } from "./validate";
 import { scanForFiles, formatHint, type FileInfo } from "./scan";
 import { buildPandocArgs, findLocalConfig, GLOBAL_CONFIG_PATH, type Config } from "./config";
+import { writeClipboard } from "./clipboard";
+import {
+  getTokenStats,
+  formatTokenStats,
+  checkLLMFit,
+  formatLLMFit,
+  anyTooLong,
+  smallestLimit,
+  truncateToFit,
+} from "./tokens";
 
 export type FormatChoice =
   | { kind: "format"; format: OutputFormat }
   | { kind: "template"; name: string; format: OutputFormat };
 
 export async function runInteractive(config?: Config) {
-  p.intro("docs2llm");
+  const isFirstRun = !findLocalConfig() && !existsSync(GLOBAL_CONFIG_PATH);
+
+  if (isFirstRun) {
+    p.intro("Welcome to docs2llm!");
+    p.log.info(
+      "Convert any document to LLM-friendly text.\n" +
+      "Tip: you can also convert files directly — docs2llm report.pdf\n" +
+      "Tip: drag a file from Finder into this terminal."
+    );
+  } else {
+    p.intro("docs2llm");
+  }
 
   const filePath = await pickFile();
   if (!filePath) return;
@@ -27,8 +48,7 @@ export async function runInteractive(config?: Config) {
   const templateName = choice.kind === "template" ? choice.name : undefined;
   await convert(filePath, choice.format, config, templateName, outputDir);
 
-  // P2: first-run hint
-  if (!findLocalConfig() && !existsSync(GLOBAL_CONFIG_PATH)) {
+  if (isFirstRun) {
     p.log.info("Tip: run docs2llm init to save your preferences.");
   }
 
@@ -40,7 +60,10 @@ async function pickFile(): Promise<string | null> {
   const hasFiles = cwd.length > 0 || downloads.length > 0;
 
   if (!hasFiles) {
-    p.log.warn("No convertible files found in current folder or ~/Downloads.");
+    p.log.warn(
+      "No convertible files found in current folder or ~/Downloads.\n" +
+      "Tip: drag a file from Finder into this terminal."
+    );
     return await manualInput();
   }
 
@@ -309,20 +332,97 @@ async function convert(
 
   s.start("Converting…");
 
+  let outputContent: string | null = null;
+  let finalOutputPath: string = plan.outputPath;
+
   try {
     if (plan.direction === "outbound") {
       const result = await convertFile(filePath, plan.format, {
         outputDir,
         pandocArgs: plan.pandocArgs,
       });
-      s.stop(`${result.sourcePath} → ${result.outputPath}`);
+      finalOutputPath = result.outputPath ?? plan.outputPath;
+      s.stop(`${result.sourcePath} → ${finalOutputPath}`);
     } else {
       const result = await convertFile(filePath, plan.format);
+      outputContent = result.formatted;
       await writeOutput(plan.outputPath, result.formatted);
-      s.stop(`${result.sourcePath} → ${plan.outputPath}`);
+
+      // Token stats (always-on for inbound)
+      const stats = getTokenStats(result.content);
+      const fits = checkLLMFit(stats.tokens);
+      s.stop(`${result.sourcePath} → ${plan.outputPath} (${formatTokenStats(stats)})`);
+
+      // LLM fit indicator (show when output is substantial)
+      if (stats.tokens > 1000) {
+        p.log.info(`Fits in: ${formatLLMFit(fits)}`);
+      }
+
+      // Offer to shorten if too long for any model
+      if (anyTooLong(fits)) {
+        const target = smallestLimit(fits)!;
+        const shorten = await p.confirm({
+          message: `This is ~${stats.tokens.toLocaleString()} tokens. Shorten to fit ${target.name}?`,
+          initialValue: false,
+        });
+        if (!p.isCancel(shorten) && shorten) {
+          const shortened = truncateToFit(result.content, target.limit);
+          outputContent = shortened;
+          await writeOutput(plan.outputPath, shortened);
+          const newStats = getTokenStats(shortened);
+          p.log.success(`Shortened to ~${newStats.tokens.toLocaleString()} tokens`);
+        }
+      }
     }
   } catch (err: any) {
     s.stop("Conversion failed.");
     p.log.error(err.message ?? String(err));
+    return;
+  }
+
+  // Post-conversion menu
+  await postConversionMenu(finalOutputPath, outputContent);
+}
+
+async function postConversionMenu(
+  outputPath: string,
+  content: string | null
+): Promise<void> {
+  const options: { value: string; label: string }[] = [];
+
+  if (content) {
+    options.push({ value: "clipboard", label: "Copy to clipboard" });
+  }
+  options.push(
+    { value: "open", label: "Open file" },
+    { value: "finder", label: "Open in Finder" },
+    { value: "done", label: "Done" },
+  );
+
+  const action = await p.select({
+    message: "What next?",
+    options: options as any,
+  });
+
+  if (p.isCancel(action) || action === "done") return;
+
+  if (action === "clipboard" && content) {
+    try {
+      await writeClipboard(content);
+      p.log.success("Copied to clipboard");
+    } catch (err: any) {
+      p.log.error(`Clipboard failed: ${err.message}`);
+    }
+  } else if (action === "open") {
+    const cmd = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
+    Bun.spawn([cmd, outputPath], { stdout: "ignore", stderr: "ignore" });
+  } else if (action === "finder") {
+    if (process.platform === "darwin") {
+      Bun.spawn(["open", "-R", outputPath], { stdout: "ignore", stderr: "ignore" });
+    } else {
+      const dir = dirname(outputPath);
+      const cmd = process.platform === "win32" ? "explorer" : "xdg-open";
+      Bun.spawn([cmd, dir], { stdout: "ignore", stderr: "ignore" });
+    }
   }
 }

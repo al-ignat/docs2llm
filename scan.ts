@@ -6,7 +6,7 @@ const CONVERTIBLE_EXTS = new Set([
   ".docx", ".doc", ".pdf", ".pptx", ".ppt",
   ".xlsx", ".xls", ".odt", ".odp", ".ods",
   ".rtf", ".epub", ".mobi", ".eml", ".msg",
-  ".csv", ".tsv", ".html", ".xml",
+  ".csv", ".tsv", ".html", ".xml", ".txt",
   ".png", ".jpg", ".jpeg", ".tiff", ".bmp", ".gif", ".webp",
   ".md",
 ]);
