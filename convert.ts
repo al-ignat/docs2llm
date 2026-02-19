@@ -58,6 +58,14 @@ async function getExtractBytes(): Promise<ExtractBytesFn> {
   return extractBytesFn!;
 }
 
+export async function convertBytes(
+  data: Uint8Array,
+  mimeType: string
+): Promise<{ content: string; mimeType: string; metadata: Record<string, unknown> }> {
+  const extractBytes = await getExtractBytes();
+  return extractBytes(data, mimeType, { outputFormat: "markdown" });
+}
+
 export async function convertHtmlToMarkdown(html: string): Promise<string> {
   const extractBytes = await getExtractBytes();
   const buffer = new TextEncoder().encode(html);

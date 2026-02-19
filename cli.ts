@@ -18,6 +18,7 @@ import { runInit } from "./init";
 import { runConfigWizard } from "./config-wizard";
 import { runPaste, type PasteOptions } from "./paste";
 import { getTokenStats, formatTokenStats } from "./tokens";
+import { startServer } from "./api";
 
 function confirm(prompt: string): Promise<boolean> {
   return new Promise((resolve) => {
@@ -45,7 +46,7 @@ function parseArgs(argv: string[]) {
   let isGlobal = false;
 
   // Check for subcommand as first positional arg
-  if (args.length > 0 && (args[0] === "init" || args[0] === "config" || args[0] === "paste")) {
+  if (args.length > 0 && (args[0] === "init" || args[0] === "config" || args[0] === "paste" || args[0] === "open")) {
     command = args[0];
     for (let i = 1; i < args.length; i++) {
       if (args[i] === "--global") isGlobal = true;
@@ -134,6 +135,9 @@ Usage:
   docs2llm paste --stdout           Convert and print to terminal
   docs2llm paste -o <file>          Convert and save to file
 
+  Web UI:
+  docs2llm open                     Launch web UI at localhost:3000
+
   Config:
   docs2llm init                     Create local .docs2llm.yaml
   docs2llm init --global            Create global config
@@ -166,6 +170,19 @@ async function main() {
   }
   if (command === "paste") {
     await runPaste(pasteOpts ?? {});
+    return;
+  }
+  if (command === "open") {
+    const port = 3000;
+    startServer(port);
+    const url = `http://localhost:${port}`;
+    if (process.platform === "darwin") {
+      Bun.spawn(["open", url], { stdout: "ignore", stderr: "ignore" });
+    } else if (process.platform === "win32") {
+      Bun.spawn(["cmd", "/c", "start", url], { stdout: "ignore", stderr: "ignore" });
+    } else {
+      Bun.spawn(["xdg-open", url], { stdout: "ignore", stderr: "ignore" });
+    }
     return;
   }
 
