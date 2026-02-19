@@ -68,6 +68,8 @@ async function pickFile(): Promise<string | null> {
         hint: formatHint(file),
       });
     }
+  } else if (cwd.length > 0) {
+    options.push({ value: "__sep__", label: "── Downloads ──", hint: "nothing in the last 24h" });
   }
 
   options.push({
@@ -97,14 +99,25 @@ async function pickFile(): Promise<string | null> {
   return picked as string;
 }
 
+function cleanPath(raw: string): string {
+  const trimmed = raw.trim();
+  // Try as-is first (handles literal backslashes in filenames)
+  try {
+    if (statSync(resolve(trimmed)).isFile()) return trimmed;
+  } catch {}
+  // Strip shell escapes from drag-and-drop (e.g. "Athena\ Framework.docx" → "Athena Framework.docx")
+  return trimmed.replace(/\\(.)/g, "$1");
+}
+
 async function manualInput(): Promise<string | null> {
   const input = await p.text({
     message: "File path:",
     placeholder: "Drag a file here or type a path",
     validate: (val) => {
       if (!val.trim()) return "Path is required.";
+      const cleaned = cleanPath(val);
       try {
-        const stat = statSync(resolve(val));
+        const stat = statSync(resolve(cleaned));
         if (!stat.isFile()) return "Not a file.";
       } catch {
         return "File not found.";
@@ -117,7 +130,7 @@ async function manualInput(): Promise<string | null> {
     return null;
   }
 
-  return resolve(input);
+  return resolve(cleanPath(input));
 }
 
 async function pickFormat(
