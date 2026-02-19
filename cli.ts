@@ -14,6 +14,7 @@ import {
   type Config,
 } from "./config";
 import { runInit } from "./init";
+import { runConfigWizard } from "./config-wizard";
 
 function confirm(prompt: string): Promise<boolean> {
   return new Promise((resolve) => {
@@ -41,8 +42,8 @@ function parseArgs(argv: string[]) {
   let isGlobal = false;
 
   // Check for subcommand as first positional arg
-  if (args.length > 0 && args[0] === "init") {
-    command = "init";
+  if (args.length > 0 && (args[0] === "init" || args[0] === "config")) {
+    command = args[0];
     for (let i = 1; i < args.length; i++) {
       if (args[i] === "--global") isGlobal = true;
     }
@@ -108,6 +109,7 @@ Usage:
   Config:
   con-the-doc init                     Create local .con-the-doc.yaml
   con-the-doc init --global            Create global config
+  con-the-doc config                   View config and manage templates
 
 Options:
   -f, --format <fmt>      Output format (default: md)
@@ -125,9 +127,13 @@ async function main() {
   const { input, format, output, formatExplicit, force, pandocArgs, command, template, isGlobal } =
     parseArgs(Bun.argv);
 
-  // Handle init subcommand
+  // Handle subcommands
   if (command === "init") {
     await runInit(isGlobal);
+    return;
+  }
+  if (command === "config") {
+    await runConfigWizard(isGlobal);
     return;
   }
 
