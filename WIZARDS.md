@@ -343,7 +343,69 @@ Then runs the full [Defaults wizard](#defaults-wizard) + [Template creation loop
 
 ---
 
-## 4. CLI Mode (non-interactive)
+## 4. Paste Wizard (`con-the-doc paste`)
+
+Clipboard → Markdown conversion. Entry: `paste.ts → runPaste()`.
+
+### Interactive mode (no flags)
+
+```
+┌  con-the-doc paste
+│
+◇  Clipboard → Markdown
+│
+◆  Output:
+│  ● Copy to clipboard
+│  ○ Print to terminal
+│  ○ Save to file…
+│
+└  Copied to clipboard ✓
+```
+
+If "Save to file…":
+
+```
+▲  Output file:
+│  snippet.md
+│
+└  Saved to /path/to/snippet.md
+```
+
+Plain text fallback (no HTML in clipboard):
+
+```
+┌  con-the-doc paste
+│
+ℹ  No HTML in clipboard — using plain text as-is.
+│
+◆  Output:
+│  ...
+```
+
+Empty clipboard:
+
+```
+┌  con-the-doc paste
+│
+✗  Clipboard is empty.
+```
+
+### CLI mode (with flags)
+
+```
+$ con-the-doc paste --copy
+✓ Copied to clipboard
+
+$ con-the-doc paste --stdout
+# Markdown output printed to terminal…
+
+$ con-the-doc paste -o snippet.md
+✓ Saved to /path/to/snippet.md
+```
+
+---
+
+## 5. CLI Mode (non-interactive)
 
 No wizard — direct conversion via flags. Entry: `cli.ts → main()`.
 

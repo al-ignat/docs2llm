@@ -41,6 +41,39 @@ async function getExtractFile() {
   return extractFileFn!;
 }
 
+type ExtractBytesFn = (data: Uint8Array, mimeType: string, config?: any) => Promise<ExtractionResult>;
+let extractBytesFn: ExtractBytesFn | null = null;
+
+async function getExtractBytes(): Promise<ExtractBytesFn> {
+  if (extractBytesFn) return extractBytesFn;
+
+  try {
+    const mod = await import("@kreuzberg/node");
+    extractBytesFn = mod.extractBytes;
+  } catch {
+    const wasm = await import("@kreuzberg/wasm");
+    await wasm.initWasm();
+    extractBytesFn = wasm.extractBytes;
+  }
+  return extractBytesFn!;
+}
+
+export async function convertHtmlToMarkdown(html: string): Promise<string> {
+  const extractBytes = await getExtractBytes();
+  const buffer = new TextEncoder().encode(html);
+  const result = await extractBytes(buffer, "text/html", {
+    outputFormat: "markdown",
+    htmlOptions: {
+      preprocessing: {
+        enabled: true,
+        removeNavigation: true,
+        removeForms: true,
+      },
+    },
+  });
+  return result.content;
+}
+
 export async function convertFile(
   filePath: string,
   format: OutputFormat,

@@ -15,6 +15,7 @@ import {
 } from "./config";
 import { runInit } from "./init";
 import { runConfigWizard } from "./config-wizard";
+import { runPaste, type PasteOptions } from "./paste";
 
 function confirm(prompt: string): Promise<boolean> {
   return new Promise((resolve) => {
@@ -42,12 +43,27 @@ function parseArgs(argv: string[]) {
   let isGlobal = false;
 
   // Check for subcommand as first positional arg
-  if (args.length > 0 && (args[0] === "init" || args[0] === "config")) {
+  if (args.length > 0 && (args[0] === "init" || args[0] === "config" || args[0] === "paste")) {
     command = args[0];
     for (let i = 1; i < args.length; i++) {
       if (args[i] === "--global") isGlobal = true;
     }
-    return { input, format, output, formatExplicit, force, pandocArgs, command, template, isGlobal };
+    if (command === "paste") {
+      const pasteOpts: PasteOptions = {};
+      for (let i = 1; i < args.length; i++) {
+        if (args[i] === "--copy") pasteOpts.copy = true;
+        else if (args[i] === "--stdout") pasteOpts.stdout = true;
+        else if (args[i] === "-o" || args[i] === "--output") {
+          pasteOpts.output = args[++i];
+          if (!pasteOpts.output) {
+            console.error("Missing output path.");
+            process.exit(1);
+          }
+        }
+      }
+      return { input, format, output, formatExplicit, force, pandocArgs, command, template, isGlobal, pasteOpts };
+    }
+    return { input, format, output, formatExplicit, force, pandocArgs, command, template, isGlobal, pasteOpts: undefined };
   }
 
   for (let i = 0; i < args.length; i++) {
@@ -87,7 +103,7 @@ function parseArgs(argv: string[]) {
     }
   }
 
-  return { input, format, output, formatExplicit, force, pandocArgs, command, template, isGlobal };
+  return { input, format, output, formatExplicit, force, pandocArgs, command, template, isGlobal, pasteOpts: undefined as PasteOptions | undefined };
 }
 
 function printHelp() {
@@ -105,6 +121,12 @@ Usage:
   con-the-doc notes.md -f docx         Convert .md to Word
   con-the-doc notes.md -f pptx         Convert .md to PowerPoint
   con-the-doc notes.md -f html         Convert .md to HTML
+
+  Clipboard:
+  con-the-doc paste                    Clipboard → Markdown (interactive)
+  con-the-doc paste --copy             Convert and copy back to clipboard
+  con-the-doc paste --stdout           Convert and print to terminal
+  con-the-doc paste -o <file>          Convert and save to file
 
   Config:
   con-the-doc init                     Create local .con-the-doc.yaml
@@ -124,7 +146,7 @@ Options:
 }
 
 async function main() {
-  const { input, format, output, formatExplicit, force, pandocArgs, command, template, isGlobal } =
+  const { input, format, output, formatExplicit, force, pandocArgs, command, template, isGlobal, pasteOpts } =
     parseArgs(Bun.argv);
 
   // Handle subcommands
@@ -134,6 +156,10 @@ async function main() {
   }
   if (command === "config") {
     await runConfigWizard();
+    return;
+  }
+  if (command === "paste") {
+    await runPaste(pasteOpts ?? {});
     return;
   }
 
