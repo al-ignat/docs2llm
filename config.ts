@@ -103,16 +103,24 @@ export function buildPandocArgs(
 
   const cli = cliArgs ?? [];
 
-  // Deduplicate: later entries win for flags with values, simple flags dedupe
+  const merged = [...builtIn, ...configArgs, ...cli];
+
+  // Deduplicate in reverse so later entries win, then reverse back.
+  // For --key=value flags, deduplicate by prefix (part before '=').
+  // For simple flags (no '='), deduplicate by exact match.
   const seen = new Set<string>();
   const result: string[] = [];
 
-  for (const arg of [...builtIn, ...configArgs, ...cli]) {
-    if (seen.has(arg)) continue;
-    seen.add(arg);
+  for (let i = merged.length - 1; i >= 0; i--) {
+    const arg = merged[i];
+    const eqIdx = arg.indexOf("=");
+    const key = eqIdx !== -1 ? arg.slice(0, eqIdx) : arg;
+    if (seen.has(key)) continue;
+    seen.add(key);
     result.push(arg);
   }
 
+  result.reverse();
   return result;
 }
 

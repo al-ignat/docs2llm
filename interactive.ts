@@ -80,7 +80,11 @@ export async function runInteractive(config?: Config) {
   p.outro("Done!");
 }
 
-async function pickFile(): Promise<string | null> {
+async function pickFile(depth = 0): Promise<string | null> {
+  if (depth >= 3) {
+    p.log.warn("Please select a file or action, not a separator.");
+    return null;
+  }
   const { cwd, downloads } = scanForFiles();
   const hasFiles = cwd.length > 0 || downloads.length > 0;
 
@@ -159,7 +163,7 @@ async function pickFile(): Promise<string | null> {
   }
 
   if (picked === "__sep__") {
-    return await pickFile();
+    return await pickFile(depth + 1);
   }
 
   if (picked === "__url__") {
@@ -241,8 +245,13 @@ async function urlInput(): Promise<string | null> {
 
 async function pickFormat(
   filePath: string,
-  config?: Config
+  config?: Config,
+  depth = 0,
 ): Promise<FormatChoice | null> {
+  if (depth >= 3) {
+    p.log.warn("Please select a format, not a separator.");
+    return null;
+  }
   const isMarkdown = extname(filePath).toLowerCase() === ".md";
 
   // Inbound: skip format picker entirely, always produce markdown
@@ -286,7 +295,7 @@ async function pickFormat(
   }
 
   if (picked === "__sep_tpl__" || picked === "__sep_fmt__") {
-    return await pickFormat(filePath, config);
+    return await pickFormat(filePath, config, depth + 1);
   }
 
   const val = picked as string;
@@ -526,6 +535,18 @@ async function convertUrlInteractive(url: string, config?: Config) {
     name = name.replace(/\.[^.]+$/, "");
     const outPath = pathResolve(`${name}.md`);
 
+    if (existsSync(outPath)) {
+      s.stop("File already exists");
+      const overwrite = await p.confirm({
+        message: `Output file already exists: ${outPath}\nOverwrite?`,
+      });
+      if (p.isCancel(overwrite) || !overwrite) {
+        p.cancel("Cancelled.");
+        return;
+      }
+      s.start("Saving…");
+    }
+
     await writeOutput(outPath, result.content);
     const stats = getTokenStats(result.content);
     s.stop(`${url} → ${outPath} (${formatTokenStats(stats)})`);
@@ -564,8 +585,17 @@ async function convertBatchInteractive(dir: string, config?: Config) {
   let fail = 0;
   for (const file of files) {
     try {
-      const result = await convertFile(file, "md");
       const { basename: pathBasename } = await import("path");
+      // Auto-enable OCR for images
+      const autoOcr = isImageFile(file) ? { enabled: true, force: true } : undefined;
+      let result = await convertFile(file, "md", autoOcr ? { ocr: autoOcr } : undefined);
+
+      // Auto-detect scanned PDFs and retry with OCR
+      if (!autoOcr && looksLikeScannedPdf(file, result.content)) {
+        p.log.info(`${pathBasename(file)}: scanned document detected, retrying with OCR…`);
+        result = await convertFile(file, "md", { ocr: { enabled: true, force: true } });
+      }
+
       const outName = pathBasename(file).replace(/\.[^.]+$/, "") + ".md";
       const outPath = join(dirname(file), outName);
       await writeOutput(outPath, result.formatted);

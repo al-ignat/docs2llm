@@ -20,41 +20,44 @@ export function startWatcher(inputDir: string, outputDir: string): void {
 
   mkdirSync(outputDir, { recursive: true });
 
-  const processed = new Set<string>();
+  const inflight = new Map<string, Promise<void>>();
 
   console.log(`Watching ${inputDir} → ${outputDir}`);
   console.log("Drop files into the folder to auto-convert. Press Ctrl+C to stop.\n");
 
-  fsWatch(inputDir, async (eventType, filename) => {
+  fsWatch(inputDir, { recursive: true }, async (eventType, filename) => {
     if (!filename || filename.startsWith(".")) return;
     const ext = extname(filename).toLowerCase();
     if (!CONVERTIBLE_EXTS.has(ext)) return;
 
     const filePath = join(inputDir, filename);
 
-    // Debounce: skip if we already processed this file recently
-    if (processed.has(filePath)) return;
-    processed.add(filePath);
-    setTimeout(() => processed.delete(filePath), 2000);
+    // Skip if a conversion is already in-flight for this file
+    if (inflight.has(filePath)) return;
 
-    // Wait a moment for file write to complete
-    await new Promise((r) => setTimeout(r, 500));
+    const task = (async () => {
+      // Wait a moment for file write to complete
+      await new Promise((r) => setTimeout(r, 500));
 
-    try {
-      if (!existsSync(filePath) || !statSync(filePath).isFile()) return;
-    } catch {
-      return;
-    }
+      try {
+        if (!existsSync(filePath) || !statSync(filePath).isFile()) return;
+      } catch {
+        return;
+      }
 
-    try {
-      const result = await convertFile(filePath, "md");
-      const outName = basename(filename, ext) + ".md";
-      const outPath = join(outputDir, outName);
-      await writeOutput(outPath, result.formatted);
-      const stats = getTokenStats(result.content);
-      console.log(`✓ ${filename} → ${outName} (${formatTokenStats(stats)})`);
-    } catch (err: any) {
-      console.error(`✗ ${filename}: ${err.message ?? err}`);
-    }
+      try {
+        const result = await convertFile(filePath, "md");
+        const outName = basename(filename, ext) + ".md";
+        const outPath = join(outputDir, outName);
+        await writeOutput(outPath, result.formatted);
+        const stats = getTokenStats(result.content);
+        console.log(`✓ ${filename} → ${outName} (${formatTokenStats(stats)})`);
+      } catch (err: any) {
+        console.error(`✗ ${filename}: ${err.message ?? err}`);
+      }
+    })();
+
+    inflight.set(filePath, task);
+    task.finally(() => inflight.delete(filePath));
   });
 }

@@ -4,7 +4,7 @@ import { resolve } from "path";
 import { statSync, mkdirSync, existsSync } from "fs";
 import { createInterface } from "readline";
 import { homedir } from "os";
-import { convertFile, looksLikeScannedPdf, isImageFile, type OutputFormat, type OcrOptions } from "./convert";
+import { convertFile, formatOutput, looksLikeScannedPdf, isImageFile, type OutputFormat, type OcrOptions } from "./convert";
 import { writeOutput } from "./output";
 import { buildPlan, ValidationError } from "./validate";
 import { runInteractive } from "./interactive";
@@ -355,7 +355,7 @@ async function main() {
 
   // URL detection: fetch and convert web pages or remote documents
   if (input.startsWith("http://") || input.startsWith("https://")) {
-    await convertUrl(input, effectiveOutputDir, effectiveForce, useStdout);
+    await convertUrl(input, effectiveFormat, effectiveOutputDir, effectiveForce, useStdout);
     return;
   }
 
@@ -661,24 +661,25 @@ async function convertFolder(
   console.log(`\nDone: ${parts.join(", ")}.`);
 }
 
-async function convertUrl(url: string, outputDir?: string, force?: boolean, useStdout?: boolean) {
+async function convertUrl(url: string, format: OutputFormat, outputDir?: string, force?: boolean, useStdout?: boolean) {
   const { basename: pathBasename } = await import("path");
 
   try {
     if (!useStdout) console.log(`Fetching ${url}…`);
     const result = await fetchAndConvert(url);
+    const formatted = formatOutput(result.content, url, "text/html", {}, format);
 
     if (useStdout) {
-      process.stdout.write(result.content);
+      process.stdout.write(formatted);
       return;
     }
 
     // Derive a filename from the URL
     let urlPath = new URL(url).pathname.replace(/\/$/, "");
     let name = pathBasename(urlPath) || "page";
-    // Strip extension if it had one, we always output .md
     name = name.replace(/\.[^.]+$/, "");
-    const outName = `${name}.md`;
+    const ext = format === "json" ? ".json" : format === "yaml" ? ".yaml" : ".md";
+    const outName = `${name}${ext}`;
     const outPath = outputDir ? resolve(outputDir, outName) : resolve(outName);
 
     if (!force && existsSync(outPath)) {
@@ -686,7 +687,7 @@ async function convertUrl(url: string, outputDir?: string, force?: boolean, useS
       if (!ok) process.exit(0);
     }
 
-    await writeOutput(outPath, result.content);
+    await writeOutput(outPath, formatted);
     const stats = getTokenStats(result.content);
     console.log(`✓ ${url} → ${outPath} (${formatTokenStats(stats)})`);
   } catch (err: any) {
@@ -741,6 +742,7 @@ async function convertStdin(
     const result = await convertBytes(data, mime, ocr);
 
     const content = result.content;
+    const formatted = formatOutput(content, "stdin", mime, {}, format);
 
     if (chunks) {
       const { splitToFit } = await import("./tokens");
@@ -756,17 +758,18 @@ async function convertStdin(
     }
 
     if (useStdout) {
-      process.stdout.write(content);
+      process.stdout.write(formatted);
       return;
     }
 
     // Write to file
-    const outPath = outputDir ? resolve(outputDir, "stdin-output.md") : resolve("stdin-output.md");
+    const ext = format === "json" ? ".json" : format === "yaml" ? ".yaml" : ".md";
+    const outPath = outputDir ? resolve(outputDir, `stdin-output${ext}`) : resolve(`stdin-output${ext}`);
     if (!force && existsSync(outPath)) {
       const ok = await confirm(`Output file already exists: ${outPath}\nOverwrite? [y/N] `);
       if (!ok) process.exit(0);
     }
-    await writeOutput(outPath, content);
+    await writeOutput(outPath, formatted);
     const stats = getTokenStats(content);
     console.log(`✓ stdin → ${outPath} (${formatTokenStats(stats)})`);
   } catch (err: any) {
