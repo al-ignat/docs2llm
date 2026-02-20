@@ -99,13 +99,21 @@ export async function convertMarkdownTo(
   const dir = outputDir ?? dirname(inputPath);
   const outPath = join(dir, `${name}.${format}`);
 
+  const PANDOC_TIMEOUT_MS = 60_000; // 60 seconds
+
   const args = ["pandoc", inputPath, ...extraArgs ?? [], "-o", outPath];
   const proc = Bun.spawn(args, {
     stdout: "pipe",
     stderr: "pipe",
   });
 
+  const timeout = setTimeout(() => proc.kill(), PANDOC_TIMEOUT_MS);
   const code = await proc.exited;
+  clearTimeout(timeout);
+
+  if (code === null || code === 137 || code === 143) {
+    throw new Error(`Pandoc timed out after ${PANDOC_TIMEOUT_MS / 1000}s`);
+  }
 
   if (code !== 0) {
     const stderr = await new Response(proc.stderr).text();
