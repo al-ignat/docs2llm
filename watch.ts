@@ -1,5 +1,5 @@
 import { watch as fsWatch } from "fs";
-import { join, extname, basename } from "path";
+import { join, extname, basename, dirname } from "path";
 import { existsSync, mkdirSync, statSync } from "fs";
 import { convertFile } from "./convert";
 import { writeOutput } from "./output";
@@ -48,7 +48,11 @@ export function startWatcher(inputDir: string, outputDir: string): void {
       try {
         const result = await convertFile(filePath, "md");
         const outName = basename(filename, ext) + ".md";
-        const outPath = join(outputDir, outName);
+        // Preserve subdirectory structure from recursive watch
+        const relDir = dirname(filename);
+        const outDir = relDir === "." ? outputDir : join(outputDir, relDir);
+        if (outDir !== outputDir) mkdirSync(outDir, { recursive: true });
+        const outPath = join(outDir, outName);
         await writeOutput(outPath, result.formatted);
         const stats = getTokenStats(result.content);
         console.log(`✓ ${filename} → ${outName} (${formatTokenStats(stats)})`);
