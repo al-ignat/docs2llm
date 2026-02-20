@@ -183,7 +183,7 @@ export function isImageFile(filePath: string): boolean {
   return IMAGE_EXTS.has(extname(filePath).toLowerCase());
 }
 
-function formatOutput(
+export function formatOutput(
   content: string,
   source: string,
   mimeType: string,
