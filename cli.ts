@@ -148,9 +148,17 @@ function parseArgs(argv: string[]) {
       chunks = true;
     } else if (arg.startsWith("--chunk-size=")) {
       chunkSize = parseInt(arg.split("=")[1], 10);
+      if (isNaN(chunkSize) || chunkSize <= 0) {
+        console.error("✗ --chunk-size must be a positive number.");
+        process.exit(1);
+      }
       chunks = true;
     } else if (arg === "--chunk-size") {
       chunkSize = parseInt(args[++i], 10);
+      if (isNaN(chunkSize) || chunkSize <= 0) {
+        console.error("✗ --chunk-size must be a positive number.");
+        process.exit(1);
+      }
       chunks = true;
     } else if (arg === "-h" || arg === "--help") {
       printHelp();
@@ -789,6 +797,13 @@ function detectMimeFromBytes(data: Uint8Array): string {
   }
   // ZIP-based (docx, pptx, xlsx, epub, odt): PK\x03\x04
   if (data[0] === 0x50 && data[1] === 0x4b && data[2] === 0x03 && data[3] === 0x04) {
+    // Scan ZIP local file headers for characteristic paths to identify the format
+    const text = new TextDecoder("ascii", { fatal: false }).decode(data.subarray(0, Math.min(data.length, 8192)));
+    if (text.includes("word/document.xml")) return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    if (text.includes("ppt/presentation.xml")) return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
+    if (text.includes("xl/workbook.xml")) return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+    if (text.includes("META-INF/container.xml")) return "application/epub+zip";
+    if (text.includes("mimetype")) return "application/zip"; // ODF — let Kreuzberg refine
     return "application/zip";
   }
   // PNG

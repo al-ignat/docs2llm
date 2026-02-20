@@ -2,14 +2,61 @@ import { basename, dirname, join, extname } from "path";
 
 export type OutboundFormat = "docx" | "pptx" | "html";
 
-const BLOCKED_PANDOC_FLAGS = new Set(["--filter", "-F", "--lua-filter"]);
+/**
+ * Allowlist of safe Pandoc flags. Flags not on this list are rejected.
+ * This is safer than a blocklist because new dangerous flags won't slip through.
+ */
+const ALLOWED_PANDOC_FLAGS = new Set([
+  "--toc", "--table-of-contents",
+  "--standalone", "-s",
+  "--reference-doc",
+  "--css",
+  "--slide-level",
+  "--shift-heading-level-by",
+  "--columns",
+  "--wrap",
+  "--number-sections", "-N",
+  "--highlight-style",
+  "--no-highlight",
+  "--toc-depth",
+  "--tab-stop",
+  "--preserve-tabs",
+  "--strip-comments",
+  "--ascii",
+  "--from", "-f",
+  "--to", "-t",
+  "-V", "--variable",
+  "-M", "--metadata",
+  "--dpi",
+  "--eol",
+  "--resource-path",
+  "--section-divs",
+  "--number-offset",
+  "--id-prefix",
+  "--title-prefix",
+  "--email-obfuscation",
+  "--self-contained",
+  "--embed-resources",
+  "--mathml", "--mathjax", "--katex",
+  "--gladtex", "--webtex",
+  "--top-level-division",
+  "--listings",
+  "--incremental",
+  "--reference-links",
+  "--reference-location",
+  "--atx-headers", "--markdown-headings",
+  "--list-tables",
+]);
 
 function sanitizePandocArgs(args: string[]): void {
   for (const arg of args) {
+    // Skip positional values (non-flag arguments that follow a flag)
+    if (!arg.startsWith("-")) continue;
     const flag = arg.split("=")[0];
-    if (BLOCKED_PANDOC_FLAGS.has(flag)) {
+    if (!ALLOWED_PANDOC_FLAGS.has(flag)) {
       throw new Error(
-        `Blocked Pandoc flag: "${flag}" can execute arbitrary code and is not allowed.`
+        `Blocked Pandoc flag: "${flag}" is not in the allowed list. ` +
+        `Only safe formatting flags are permitted.`
       );
     }
   }
@@ -52,13 +99,21 @@ export async function convertMarkdownTo(
   const dir = outputDir ?? dirname(inputPath);
   const outPath = join(dir, `${name}.${format}`);
 
+  const PANDOC_TIMEOUT_MS = 60_000; // 60 seconds
+
   const args = ["pandoc", inputPath, ...extraArgs ?? [], "-o", outPath];
   const proc = Bun.spawn(args, {
     stdout: "pipe",
     stderr: "pipe",
   });
 
+  const timeout = setTimeout(() => proc.kill(), PANDOC_TIMEOUT_MS);
   const code = await proc.exited;
+  clearTimeout(timeout);
+
+  if (code === null || code === 137 || code === 143) {
+    throw new Error(`Pandoc timed out after ${PANDOC_TIMEOUT_MS / 1000}s`);
+  }
 
   if (code !== 0) {
     const stderr = await new Response(proc.stderr).text();

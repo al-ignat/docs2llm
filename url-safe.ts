@@ -2,6 +2,8 @@
  * URL validation, SSRF protection, and safe fetch with timeout + size limits.
  */
 
+import { resolve as dnsResolve } from "dns/promises";
+
 export const MAX_RESPONSE_BYTES = 100 * 1024 * 1024; // 100 MB
 export const FETCH_TIMEOUT_MS = 30_000; // 30 seconds
 export const MAX_REDIRECTS = 5;
@@ -88,13 +90,46 @@ function isPrivateIPv6(ip: string): boolean {
 }
 
 /**
+ * Resolve a hostname via DNS and validate that none of the resolved IPs are private.
+ * This prevents DNS rebinding attacks where a hostname resolves to a public IP during
+ * URL validation but a private IP when fetch() actually connects.
+ */
+async function validateResolvedIPs(hostname: string): Promise<void> {
+  // Skip if the hostname is already an IP literal
+  if (isPrivateIPv4(hostname)) {
+    throw new Error(`Blocked request to private IP: ${hostname}`);
+  }
+  if (hostname.startsWith("[") && hostname.endsWith("]")) {
+    return; // IPv6 literals are already checked in validateUrl
+  }
+  // Skip DNS resolution for IP-address hostnames (already validated above)
+  if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname)) {
+    return;
+  }
+
+  try {
+    const addresses = await dnsResolve(hostname);
+    for (const addr of addresses) {
+      if (isPrivateIPv4(addr)) {
+        throw new Error(`Blocked request: ${hostname} resolves to private IP ${addr}`);
+      }
+    }
+  } catch (err: any) {
+    // Re-throw our own validation errors
+    if (err.message?.startsWith("Blocked")) throw err;
+    // DNS resolution failures will be caught by fetch() itself
+  }
+}
+
+/**
  * Fetch a URL with SSRF validation, timeout, and redirect validation.
  */
 export async function safeFetch(url: string): Promise<Response> {
   let currentUrl = url;
 
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
-    validateUrl(currentUrl);
+    const parsed = validateUrl(currentUrl);
+    await validateResolvedIPs(parsed.hostname);
 
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);

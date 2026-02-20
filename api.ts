@@ -15,7 +15,7 @@ import {
 } from "./config";
 import { tmpdir, homedir } from "os";
 import { unlinkSync, existsSync, mkdirSync } from "fs";
-import { join, dirname } from "path";
+import { join, dirname, resolve } from "path";
 import { HTML } from "./ui";
 
 const MAX_UPLOAD_BYTES = 100 * 1024 * 1024; // 100 MB
@@ -219,7 +219,7 @@ async function handleConvertOutbound(req: Request): Promise<Response> {
   }
 
   const outFormat = format as OutboundFormat;
-  const tmpIn = join(tmpdir(), `docs2llm-in-${Date.now()}.md`);
+  const tmpIn = join(tmpdir(), `docs2llm-in-${Date.now()}-${crypto.randomUUID().slice(0, 8)}.md`);
   let outPath: string | undefined;
 
   try {
@@ -230,12 +230,13 @@ async function handleConvertOutbound(req: Request): Promise<Response> {
     outPath = await convertMarkdownTo(tmpIn, outFormat, tmpdir(), pandocArgs);
 
     const outBytes = await Bun.file(outPath).arrayBuffer();
-    const baseName = file.name.replace(/\.[^.]+$/, "") || "output";
+    const rawName = file.name.replace(/\.[^.]+$/, "") || "output";
+    const safeName = rawName.replace(/[^a-zA-Z0-9._-]/g, "_");
 
     return new Response(outBytes, {
       headers: {
         "Content-Type": OUTBOUND_MIMES[outFormat] ?? "application/octet-stream",
-        "Content-Disposition": `attachment; filename="${baseName}.${outFormat}"`,
+        "Content-Disposition": `attachment; filename="${safeName}.${outFormat}"`,
       },
     });
   } catch (err: any) {
@@ -320,7 +321,8 @@ async function handleCreateTemplate(req: Request): Promise<Response> {
     return Response.json({ error: "Invalid format." }, { status: 400 });
   }
 
-  const features: string[] = featuresRaw ? JSON.parse(featuresRaw) : [];
+  const parsed = featuresRaw ? JSON.parse(featuresRaw) : [];
+  const features: string[] = Array.isArray(parsed) ? parsed.filter((f: unknown) => typeof f === "string") : [];
   const pandocArgs: string[] = [];
 
   if (features.includes("toc")) pandocArgs.push("--toc");
@@ -364,13 +366,17 @@ async function handleDeleteTemplate(name: string): Promise<Response> {
     return Response.json({ error: `Template "${name}" not found.` }, { status: 404 });
   }
 
-  // Check if there's a reference file to clean up
+  // Clean up reference files — only delete if within the expected template directory
   const tpl = existing.templates[name];
+  const templateDir = join(homedir(), ".config", "docs2llm", "templates");
   if (tpl.pandocArgs) {
     for (const arg of tpl.pandocArgs) {
       if (arg.startsWith("--reference-doc=")) {
         const refPath = arg.slice("--reference-doc=".length);
-        try { unlinkSync(refPath); } catch {}
+        const resolved = resolve(refPath);
+        if (resolved.startsWith(templateDir + "/")) {
+          try { unlinkSync(resolved); } catch {}
+        }
       }
     }
   }
@@ -390,6 +396,7 @@ async function handleDeleteTemplate(name: string): Promise<Response> {
 export function startServer(port = 3000): { port: number; stop: () => void } {
   const server = Bun.serve({
     port,
+    hostname: "127.0.0.1",
     maxRequestBodySize: MAX_UPLOAD_BYTES,
     async fetch(req) {
       const url = new URL(req.url);

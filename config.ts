@@ -30,10 +30,13 @@ export const GLOBAL_CONFIG_PATH = join(
 
 export function findLocalConfig(startDir?: string): string | null {
   let dir = startDir ?? process.cwd();
+  const home = homedir();
 
   while (true) {
     const candidate = join(dir, LOCAL_CONFIG_NAME);
     if (existsSync(candidate)) return candidate;
+    // Stop at home directory to avoid picking up configs from shared parent dirs
+    if (dir === home) break;
     const parent = dirname(dir);
     if (parent === dir) break;
     dir = parent;
