@@ -390,6 +390,7 @@ async function handleDeleteTemplate(name: string): Promise<Response> {
 export function startServer(port = 3000): { port: number; stop: () => void } {
   const server = Bun.serve({
     port,
+    hostname: "127.0.0.1",
     maxRequestBodySize: MAX_UPLOAD_BYTES,
     async fetch(req) {
       const url = new URL(req.url);
