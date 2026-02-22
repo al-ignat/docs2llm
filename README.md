@@ -52,10 +52,10 @@ choco install pandoc       # Windows
   .pdf .docx       │                      │    Markdown
   .pptx .xlsx ───► │      docs2llm        │ ──► + token count
   .html .eml       │                      │    + LLM fit check
-  .png .jpg    ───► │  Kreuzberg (inbound) │ ──► clipboard / file / stdout
-  URLs         ───► │  Pandoc (outbound)   │
+  .png .jpg   ───► │  Kreuzberg (inbound) │ ──► clipboard / file / stdout
+  URLs        ───► │  Pandoc (outbound)   │
                    │                      │    .docx .pptx .html
-  .md          ───► │                      │ ──► via Pandoc
+  .md         ───► │                      │ ──► via Pandoc
                    └──────────────────────┘
 ```
 
