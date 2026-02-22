@@ -208,7 +208,7 @@ async function promptTemplateFeatures(format: OutputFormat): Promise<string[] | 
   const pandocArgs: string[] = [];
 
   if (featureOptions.length > 0) {
-    const features = await p.multiselect<FeatureOption[], string>({
+    const features = await p.multiselect({
       message: "What should this template include?",
       options: featureOptions,
       required: false,

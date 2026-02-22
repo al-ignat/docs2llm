@@ -456,6 +456,6 @@ export function startServer(port = 3000): { port: number; stop: () => void } {
 
   const actualPort = server.port;
   console.log(`docs2llm server running at http://localhost:${actualPort}`);
-  return { port: actualPort, stop: () => server.stop() };
+  return { port: actualPort ?? port, stop: () => server.stop() };
 }
 
