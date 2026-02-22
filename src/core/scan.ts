@@ -16,6 +16,7 @@ export interface FileInfo {
   name: string;
   dir: string;
   modifiedAt: Date;
+  size: number;
 }
 
 function scanDir(dir: string, maxAge?: number): FileInfo[] {
@@ -37,6 +38,7 @@ function scanDir(dir: string, maxAge?: number): FileInfo[] {
           name: entry.name,
           dir,
           modifiedAt: stat.mtime,
+          size: stat.size,
         });
       } catch {
         // skip files we can't stat
@@ -49,7 +51,7 @@ function scanDir(dir: string, maxAge?: number): FileInfo[] {
   }
 }
 
-function timeAgo(date: Date): string {
+export function timeAgo(date: Date): string {
   const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
   if (seconds < 60) return "just now";
   const minutes = Math.floor(seconds / 60);
@@ -60,21 +62,32 @@ function timeAgo(date: Date): string {
   return `${days}d ago`;
 }
 
+function formatSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 export interface ScanResult {
   cwd: FileInfo[];
   downloads: FileInfo[];
 }
 
 export function scanForFiles(): ScanResult {
-  const cwdFiles = scanDir(process.cwd(), undefined).slice(0, 5);
+  const cwdFiles = scanDir(process.cwd(), undefined).slice(0, 20);
   const downloadsDir = join(homedir(), "Downloads");
   const oneDayMs = 24 * 60 * 60 * 1000;
-  const dlFiles = scanDir(downloadsDir, oneDayMs).slice(0, 3);
+  const dlFiles = scanDir(downloadsDir, oneDayMs).slice(0, 10);
 
   return { cwd: cwdFiles, downloads: dlFiles };
 }
 
 export function formatHint(file: FileInfo): string {
-  const relative = file.dir === process.cwd() ? "./" : file.dir.replace(homedir(), "~");
-  return `${timeAgo(file.modifiedAt)} · ${relative}`;
+  const ext = extname(file.name).slice(1).toUpperCase();
+  const size = formatSize(file.size);
+  const isDownload = file.dir !== process.cwd();
+  if (isDownload) {
+    return `Download · ${size} · ${ext}`;
+  }
+  return `${size} · ${ext}`;
 }

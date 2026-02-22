@@ -90,67 +90,50 @@ async function pickFile(): Promise<string> {
   }
 
   type PickValue = string;
-  const options: { value: PickValue; label: string; hint?: string; disabled?: boolean }[] = [];
+  const options: { value: PickValue; label: string; hint?: string }[] = [];
 
-  if (cwd.length > 0) {
-    for (const file of cwd) {
-      options.push({
-        value: file.path,
-        label: file.name,
-        hint: formatHint(file),
-      });
-    }
-  }
-
-  if (downloads.length > 0) {
-    if (cwd.length > 0) {
-      options.push({ value: "__sep_dl__", label: "── Downloads ──", hint: "", disabled: true });
-    }
-    for (const file of downloads) {
-      options.push({
-        value: file.path,
-        label: file.name,
-        hint: formatHint(file),
-      });
-    }
-  } else if (cwd.length > 0) {
-    options.push({ value: "__sep_dl__", label: "── Downloads ──", hint: "nothing in the last 24h", disabled: true });
-  }
-
-  // Actions separator
-  options.push({ value: "__sep_actions__", label: "── Actions ──", hint: "", disabled: true });
-
-  // Batch options
+  // Actions first — always visible at the top
   if (cwd.length > 1) {
     options.push({
       value: "__batch_cwd__",
       label: "Convert all files in current folder",
-      hint: `${cwd.length} files`,
+      hint: `action · ${cwd.length} files`,
     });
   }
   if (downloads.length > 1) {
     options.push({
       value: "__batch_dl__",
       label: "Convert all recent downloads",
-      hint: `${downloads.length} files`,
+      hint: `action · ${downloads.length} files`,
+    });
+  }
+  options.push(
+    { value: "__url__", label: "Paste a URL…", hint: "action" },
+    { value: "__browse__", label: "Browse or paste a path…", hint: "action" },
+  );
+
+  // CWD files
+  for (const file of cwd) {
+    options.push({
+      value: file.path,
+      label: file.name,
+      hint: formatHint(file),
     });
   }
 
-  options.push({
-    value: "__url__",
-    label: "Paste a URL…",
-    hint: "",
-  });
+  // Download files
+  for (const file of downloads) {
+    options.push({
+      value: file.path,
+      label: file.name,
+      hint: formatHint(file),
+    });
+  }
 
-  options.push({
-    value: "__browse__",
-    label: "Browse or paste a path…",
-    hint: "",
-  });
-
-  const picked = guard(await p.select({
+  const picked = guard(await p.autocomplete({
     message: "Pick a file to convert:",
     options,
+    placeholder: "Start typing to filter files…",
   }));
 
   if (picked === "__url__") {
@@ -183,9 +166,9 @@ function cleanPath(raw: string): string {
 }
 
 async function manualInput(): Promise<string> {
-  const input = guard(await p.text({
+  const input = guard(await p.path({
     message: "File path:",
-    placeholder: "Drag a file here or type a path",
+    directory: false,
     validate: (val) => {
       if (!val?.trim()) return "Path is required.";
       const cleaned = cleanPath(val);
@@ -314,9 +297,9 @@ async function pickOutputDir(
     case "config":
       return resolve(configDefault!);
     case "custom": {
-      const dir = guard(await p.text({
+      const dir = guard(await p.path({
         message: "Output directory:",
-        placeholder: "./out",
+        directory: true,
         validate: (val) => {
           if (!val?.trim()) return "Path is required.";
         },
