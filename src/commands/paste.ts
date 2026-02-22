@@ -50,7 +50,7 @@ export async function runPaste(options: PasteOptions): Promise<void> {
       markdown = await convertHtmlToMarkdown(clip.html);
     } catch (err: any) {
       if (s) {
-        s.stop("Conversion failed.");
+        s.error("Conversion failed.");
         p.log.error(err.message ?? String(err));
       } else {
         console.error(`✗ ${err.message ?? err}`);

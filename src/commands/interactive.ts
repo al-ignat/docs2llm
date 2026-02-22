@@ -5,7 +5,7 @@ import { homedir } from "os";
 import { convertFile, looksLikeScannedPdf, isImageFile, type OutputFormat } from "../core/convert";
 import { writeOutput } from "../core/output";
 import { buildPlan, ValidationError } from "../core/validate";
-import { scanForFiles, formatHint, type FileInfo } from "../core/scan";
+import { scanForFiles, formatHint, timeAgo, type FileInfo } from "../core/scan";
 import { buildPandocArgs, findLocalConfig, GLOBAL_CONFIG_PATH, type Config } from "../core/config";
 import { writeClipboard } from "../core/clipboard";
 import { guard } from "../shared/wizard-utils";
@@ -346,8 +346,14 @@ async function convert(
   }
 
   if (existsSync(plan.outputPath)) {
+    const existingStat = statSync(plan.outputPath);
+    const sizeKB = (existingStat.size / 1024).toFixed(1);
+    p.log.warn(
+      `${plan.outputPath}\n` +
+      `${sizeKB} KB · modified ${timeAgo(existingStat.mtime)}`
+    );
     const overwrite = await p.confirm({
-      message: `Output file already exists: ${plan.outputPath}\nOverwrite?`,
+      message: "Overwrite existing file?",
     });
     if (p.isCancel(overwrite) || !overwrite) {
       p.cancel("Cancelled.");
@@ -443,7 +449,7 @@ async function convert(
       }
     }
   } catch (err: any) {
-    s.stop("Conversion failed.");
+    s.error("Conversion failed.");
     p.log.error(err.message ?? String(err));
     return;
   }
@@ -486,7 +492,7 @@ async function convertUrlInteractive(url: string, config?: Config) {
 
     await postConversionMenu(outPath, result.content);
   } catch (err: any) {
-    s.stop("Fetch failed.");
+    s.error("Fetch failed.");
     p.log.error(err.message ?? String(err));
   }
 }
@@ -512,39 +518,60 @@ async function convertBatchInteractive(dir: string, config?: Config) {
     return;
   }
 
-  p.log.info(`Found ${files.length} file(s) to convert.`);
+  p.log.info(`${files.length} file(s) in ${dir.replace(homedir(), "~")}`);
+
+  const proceed = await p.confirm({
+    message: "Start conversion?",
+    initialValue: true,
+  });
+  if (p.isCancel(proceed) || !proceed) {
+    p.cancel("Cancelled.");
+    return;
+  }
+
+  const bar = p.progress({ max: files.length });
+  bar.start("Converting…");
 
   let ok = 0;
   let fail = 0;
+  let ocr = 0;
+  let totalTokens = 0;
   for (const file of files) {
+    const name = basename(file);
     try {
-      const { basename: pathBasename } = await import("path");
       // Auto-enable OCR for images
       const autoOcr = isImageFile(file) ? { enabled: true, force: true } : undefined;
       let result = await convertFile(file, "md", autoOcr ? { ocr: autoOcr } : undefined);
+      let usedOcr = !!autoOcr;
 
       // Auto-detect scanned PDFs and retry with OCR
       if (!autoOcr && looksLikeScannedPdf(file, result.content)) {
-        p.log.info(`${pathBasename(file)}: scanned document detected, retrying with OCR…`);
         result = await convertFile(file, "md", { ocr: { enabled: true, force: true } });
+        usedOcr = true;
       }
 
-      const outName = pathBasename(file).replace(/\.[^.]+$/, "") + ".md";
+      const outName = name.replace(/\.[^.]+$/, "") + ".md";
       const outPath = join(dirname(file), outName);
       await writeOutput(outPath, result.formatted);
       const stats = getTokenStats(result.content);
-      p.log.success(`${pathBasename(file)} → ${outName} (${formatTokenStats(stats)})`);
+      totalTokens += stats.tokens;
+      bar.advance(1, `${name} → ${outName} (${formatTokenStats(stats)})`);
       ok++;
+      if (usedOcr) ocr++;
     } catch (err: any) {
-      const { basename: pathBasename } = await import("path");
-      p.log.error(`${pathBasename(file)}: ${err.message ?? err}`);
+      bar.advance(1, `${name}: failed`);
       fail++;
     }
   }
 
-  const parts = [`${ok} converted`];
-  if (fail > 0) parts.push(`${fail} failed`);
-  p.log.info(parts.join(", "));
+  bar.stop(`Converted ${ok} of ${files.length} files`);
+
+  // Summary
+  const summary: string[] = [`${ok} converted`];
+  if (fail > 0) summary.push(`${fail} failed`);
+  if (ocr > 0) summary.push(`${ocr} with OCR`);
+  summary.push(`~${totalTokens.toLocaleString()} total tokens`);
+  p.log.info(summary.join(", "));
 }
 
 async function postConversionMenu(
