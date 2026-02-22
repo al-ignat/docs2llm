@@ -36,7 +36,7 @@ export async function runPaste(options: PasteOptions): Promise<void> {
     if (hasFlag) {
       console.error("✗ Clipboard is empty.");
     } else {
-      p.log.error("Clipboard is empty.");
+      p.log.error("Clipboard is empty. Copy some text or HTML first, then run docs2llm paste.");
     }
     process.exit(1);
   }
@@ -86,6 +86,16 @@ export async function runPaste(options: PasteOptions): Promise<void> {
     return;
   }
 
+  // Preview
+  const lines = markdown.split("\n");
+  const preview = lines.slice(0, 3).join("\n");
+  const words = markdown.split(/\s+/).filter(Boolean).length;
+  const chars = markdown.length;
+  p.log.info(
+    `${preview}${lines.length > 3 ? "\n…" : ""}\n` +
+    `${words} words · ${chars} chars`
+  );
+
   // Interactive prompt
   const dest = guard(await p.select({
     message: "Output:",
@@ -98,7 +108,7 @@ export async function runPaste(options: PasteOptions): Promise<void> {
 
   if (dest === "clipboard") {
     await writeClipboard(markdown);
-    p.outro("Copied to clipboard ✓");
+    p.outro("Copied to clipboard. Paste into your editor or LLM chat.");
     return;
   }
 
