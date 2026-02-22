@@ -8,8 +8,8 @@ import {
   GLOBAL_CONFIG_PATH,
   parseConfigFile,
   serializeConfig,
-} from "./config";
-import type { OutputFormat } from "./convert";
+} from "../core/config";
+import type { OutputFormat } from "../core/convert";
 
 export async function runInit(isGlobal: boolean) {
   const targetPath = isGlobal ? GLOBAL_CONFIG_PATH : LOCAL_CONFIG_NAME;

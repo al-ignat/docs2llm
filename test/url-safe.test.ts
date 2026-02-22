@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { validateUrl } from "../url-safe";
+import { validateUrl } from "../src/core/url-safe";
 
 describe("validateUrl", () => {
   // --- Valid URLs ---
@@ -107,8 +107,12 @@ describe("validateUrl", () => {
   // BUG: URL parser normalizes ::ffff:127.0.0.1 → ::ffff:7f00:1 (hex),
   // bypassing the dotted-quad check in isPrivateIPv6. These tests document
   // the current (broken) behavior. See SSRF bypass via IPv4-mapped IPv6.
-  test.todo("blocks IPv4-mapped IPv6 with private address (currently bypassed)");
-  test.todo("blocks IPv4-mapped IPv6 with 10.x address (currently bypassed)");
+  test.todo("blocks IPv4-mapped IPv6 with private address (currently bypassed)", () => {
+    expect(() => validateUrl("http://[::ffff:127.0.0.1]")).toThrow("private IP");
+  });
+  test.todo("blocks IPv4-mapped IPv6 with 10.x address (currently bypassed)", () => {
+    expect(() => validateUrl("http://[::ffff:10.0.0.1]")).toThrow("private IP");
+  });
 
   // --- Public IPs should pass ---
   test("allows public IPv4", () => {

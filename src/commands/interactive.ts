@@ -2,12 +2,12 @@ import * as p from "@clack/prompts";
 import { resolve, extname, dirname, join, basename } from "path";
 import { statSync, existsSync, mkdirSync } from "fs";
 import { homedir } from "os";
-import { convertFile, looksLikeScannedPdf, isImageFile, type OutputFormat } from "./convert";
-import { writeOutput } from "./output";
-import { buildPlan, ValidationError } from "./validate";
-import { scanForFiles, formatHint, type FileInfo } from "./scan";
-import { buildPandocArgs, findLocalConfig, GLOBAL_CONFIG_PATH, type Config } from "./config";
-import { writeClipboard } from "./clipboard";
+import { convertFile, looksLikeScannedPdf, isImageFile, type OutputFormat } from "../core/convert";
+import { writeOutput } from "../core/output";
+import { buildPlan, ValidationError } from "../core/validate";
+import { scanForFiles, formatHint, type FileInfo } from "../core/scan";
+import { buildPandocArgs, findLocalConfig, GLOBAL_CONFIG_PATH, type Config } from "../core/config";
+import { writeClipboard } from "../core/clipboard";
 import {
   getTokenStats,
   formatTokenStats,
@@ -18,7 +18,7 @@ import {
   truncateToFit,
   splitToFit,
   estimateTokens,
-} from "./tokens";
+} from "../core/tokens";
 import { fetchAndConvert } from "./fetch";
 
 export type FormatChoice =
@@ -473,7 +473,7 @@ async function convert(
       // Offer to shorten or split if too long for any model
       if (anyTooLong(fits)) {
         const target = smallestLimit(fits)!;
-        const { splitToFit: doSplit } = await import("./tokens");
+        const { splitToFit: doSplit } = await import("../core/tokens");
         const splitResult = doSplit(result.content, target.limit);
         const numParts = splitResult.parts.length;
 

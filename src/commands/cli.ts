@@ -4,24 +4,24 @@ import { resolve } from "path";
 import { statSync, mkdirSync, existsSync } from "fs";
 import { createInterface } from "readline";
 import { homedir } from "os";
-import { convertFile, formatOutput, looksLikeScannedPdf, isImageFile, type OutputFormat, type OcrOptions } from "./convert";
-import { writeOutput } from "./output";
-import { buildPlan, ValidationError } from "./validate";
+import { convertFile, formatOutput, looksLikeScannedPdf, isImageFile, type OutputFormat, type OcrOptions } from "../core/convert";
+import { writeOutput } from "../core/output";
+import { buildPlan, ValidationError } from "../core/validate";
 import { runInteractive } from "./interactive";
 import {
   loadConfig,
   resolveTemplate,
   buildPandocArgs,
   type Config,
-} from "./config";
+} from "../core/config";
 import { runInit } from "./init";
 import { runConfigWizard } from "./config-wizard";
 import { runPaste, type PasteOptions } from "./paste";
-import { getTokenStats, formatTokenStats } from "./tokens";
-import { startServer } from "./api";
+import { getTokenStats, formatTokenStats } from "../core/tokens";
+import { startServer } from "../server/api";
 import { fetchAndConvert } from "./fetch";
 import { startWatcher } from "./watch";
-import { startMcpServer } from "./mcp";
+import { startMcpServer } from "../server/mcp";
 
 function confirm(prompt: string): Promise<boolean> {
   return new Promise((resolve) => {
@@ -483,7 +483,7 @@ async function convertSingleFile(
 
       // --chunks mode: split and output as JSON
       if (chunks) {
-        const { splitToFit } = await import("./tokens");
+        const { splitToFit } = await import("../core/tokens");
         const targetSize = chunkSize || 4000;
         const splitResult = splitToFit(result.content, targetSize);
         const output = splitResult.parts.map((text, i) => ({
@@ -723,7 +723,7 @@ async function convertStdin(
   chunks?: boolean,
   chunkSize?: number | null,
 ) {
-  const { convertBytes } = await import("./convert");
+  const { convertBytes } = await import("../core/convert");
 
   // Read all of stdin as bytes with size limit
   const inputChunks: Uint8Array[] = [];
@@ -757,7 +757,7 @@ async function convertStdin(
     const formatted = formatOutput(content, "stdin", mime, {}, format);
 
     if (chunks) {
-      const { splitToFit } = await import("./tokens");
+      const { splitToFit } = await import("../core/tokens");
       const targetSize = chunkSize || 4000;
       const splitResult = splitToFit(content, targetSize);
       const output = splitResult.parts.map((text, i) => ({

@@ -1,9 +1,9 @@
 import { watch as fsWatch } from "fs";
 import { join, extname, basename, dirname } from "path";
 import { existsSync, mkdirSync, statSync } from "fs";
-import { convertFile } from "./convert";
-import { writeOutput } from "./output";
-import { getTokenStats, formatTokenStats } from "./tokens";
+import { convertFile } from "../core/convert";
+import { writeOutput } from "../core/output";
+import { getTokenStats, formatTokenStats } from "../core/tokens";
 
 const CONVERTIBLE_EXTS = new Set([
   ".docx", ".doc", ".pdf", ".pptx", ".ppt",

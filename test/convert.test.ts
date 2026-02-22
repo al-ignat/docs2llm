@@ -4,7 +4,7 @@ import {
   looksLikeScannedPdf,
   isImageFile,
   isImageMime,
-} from "../convert";
+} from "../src/core/convert";
 
 describe("looksLikeScannedPdf", () => {
   test("returns true for a .pdf with empty content", () => {

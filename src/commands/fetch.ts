@@ -1,5 +1,5 @@
-import { convertHtmlToMarkdown, convertBytes } from "./convert";
-import { safeFetchBytes } from "./url-safe";
+import { convertHtmlToMarkdown, convertBytes } from "../core/convert";
+import { safeFetchBytes } from "../core/url-safe";
 
 export async function fetchAndConvert(url: string): Promise<{ content: string; mimeType: string }> {
   const { bytes, contentType } = await safeFetchBytes(url);

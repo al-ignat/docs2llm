@@ -10,7 +10,7 @@ import {
   smallestLimit,
   truncateToFit,
   splitToFit,
-} from "../tokens";
+} from "../src/core/tokens";
 
 describe("countWords", () => {
   test("counts words in a simple sentence", () => {

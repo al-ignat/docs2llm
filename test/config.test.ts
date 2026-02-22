@@ -6,7 +6,7 @@ import {
   parseConfigFile,
   serializeConfig,
   type Config,
-} from "../config";
+} from "../src/core/config";
 
 describe("mergeConfigs", () => {
   test("local defaults override global defaults", () => {

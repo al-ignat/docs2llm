@@ -1,9 +1,9 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { convertFile, convertBytes, type OcrOptions } from "./convert";
-import { fetchAndConvert } from "./fetch";
-import { getTokenStats } from "./tokens";
+import { convertFile, convertBytes, type OcrOptions } from "../core/convert";
+import { fetchAndConvert } from "../commands/fetch";
+import { getTokenStats } from "../core/tokens";
 
 export async function startMcpServer() {
   const server = new McpServer({

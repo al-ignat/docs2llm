@@ -1,9 +1,9 @@
 import * as p from "@clack/prompts";
 import { resolve, dirname } from "path";
 import { mkdirSync } from "fs";
-import { readClipboard, writeClipboard } from "./clipboard";
-import { convertHtmlToMarkdown } from "./convert";
-import { writeOutput } from "./output";
+import { readClipboard, writeClipboard } from "../core/clipboard";
+import { convertHtmlToMarkdown } from "../core/convert";
+import { writeOutput } from "../core/output";
 
 export interface PasteOptions {
   copy?: boolean;

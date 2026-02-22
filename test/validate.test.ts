@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { buildPlan, ValidationError } from "../validate";
+import { buildPlan, ValidationError } from "../src/core/validate";
 
 describe("buildPlan", () => {
   // --- Inbound conversions (document → markdown) ---
