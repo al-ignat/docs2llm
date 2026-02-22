@@ -10,23 +10,23 @@ import {
   loadConfig,
 } from "../core/config";
 import { promptDefaults, promptTemplateLoop, saveConfig } from "./init";
+import { guard } from "../shared/wizard-utils";
 
-async function pickConfigTarget(): Promise<string | null> {
+async function pickConfigTarget(): Promise<string> {
   const globalExists = existsSync(GLOBAL_CONFIG_PATH);
   const localPath = findLocalConfig();
 
   // Pre-select: local if it exists, else global if it exists, else local
   const defaultValue = localPath ? "local" : globalExists ? "global" : "local";
 
-  const target = await p.select<string>({
+  const target = guard(await p.select<string>({
     message: "Which config to edit?",
     initialValue: defaultValue,
     options: [
       { value: "local" as string, label: "Local", hint: LOCAL_CONFIG_NAME },
       { value: "global" as string, label: "Global", hint: GLOBAL_CONFIG_PATH.replace(homedir(), "~") },
     ],
-  });
-  if (p.isCancel(target)) { p.cancel("Cancelled."); return null; }
+  }));
 
   return target === "global" ? GLOBAL_CONFIG_PATH : (localPath ?? LOCAL_CONFIG_NAME);
 }
@@ -49,22 +49,18 @@ export async function runConfigWizard() {
     if (p.isCancel(create) || !create) { p.outro(""); return; }
 
     const targetPath = await pickConfigTarget();
-    if (!targetPath) return;
-
     const defaults = await promptDefaults();
-    if (!defaults) return;
 
     const newConfig: Config = { defaults: defaults.defaults };
 
-    const wantTemplate = await p.confirm({
+    const wantTemplate = guard(await p.confirm({
       message: "Create a named template?",
       initialValue: false,
-    });
-    if (p.isCancel(wantTemplate)) { p.cancel("Cancelled."); return; }
+    }));
 
     if (wantTemplate) {
       const templates = await promptTemplateLoop();
-      if (templates) newConfig.templates = templates;
+      newConfig.templates = templates;
     }
 
     await saveConfig(targetPath, newConfig);
@@ -97,11 +93,10 @@ export async function runConfigWizard() {
 
   // Ask which config to edit
   const targetPath = await pickConfigTarget();
-  if (!targetPath) return;
 
   const existing = existsSync(targetPath) ? parseConfigFile(targetPath) : {};
 
-  const action = await p.select<string>({
+  const action = guard(await p.select<string>({
     message: "What would you like to do?",
     options: [
       { value: "add-template" as string, label: "Add a template" },
@@ -109,8 +104,7 @@ export async function runConfigWizard() {
       { value: "open" as string, label: "Open config file" },
       { value: "done" as string, label: "Done" },
     ],
-  });
-  if (p.isCancel(action)) { p.cancel("Cancelled."); return; }
+  }));
 
   if (action === "done") {
     p.outro("");
@@ -126,7 +120,6 @@ export async function runConfigWizard() {
 
   if (action === "add-template") {
     const templates = await promptTemplateLoop(existing.templates);
-    if (!templates) { p.outro(""); return; }
     existing.templates = { ...existing.templates, ...templates };
     await saveConfig(targetPath, existing);
     return;
@@ -134,7 +127,6 @@ export async function runConfigWizard() {
 
   if (action === "edit-defaults") {
     const defaults = await promptDefaults(existing);
-    if (!defaults) { p.outro(""); return; }
     existing.defaults = defaults.defaults;
     await saveConfig(targetPath, existing);
     return;

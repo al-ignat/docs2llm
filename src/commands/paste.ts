@@ -4,6 +4,7 @@ import { mkdirSync } from "fs";
 import { readClipboard, writeClipboard } from "../core/clipboard";
 import { convertHtmlToMarkdown } from "../core/convert";
 import { writeOutput } from "../core/output";
+import { guard } from "../shared/wizard-utils";
 
 export interface PasteOptions {
   copy?: boolean;
@@ -86,19 +87,14 @@ export async function runPaste(options: PasteOptions): Promise<void> {
   }
 
   // Interactive prompt
-  const dest = await p.select({
+  const dest = guard(await p.select({
     message: "Output:",
     options: [
       { value: "clipboard", label: "Copy to clipboard" },
       { value: "stdout", label: "Print to terminal" },
       { value: "file", label: "Save to file…" },
     ],
-  });
-
-  if (p.isCancel(dest)) {
-    p.cancel("Cancelled.");
-    return;
-  }
+  }));
 
   if (dest === "clipboard") {
     await writeClipboard(markdown);
@@ -113,18 +109,13 @@ export async function runPaste(options: PasteOptions): Promise<void> {
   }
 
   // File
-  const filePath = await p.text({
+  const filePath = guard(await p.text({
     message: "Output file:",
     placeholder: "snippet.md",
     validate: (val) => {
-      if (!val.trim()) return "Path is required.";
+      if (!val?.trim()) return "Path is required.";
     },
-  });
-
-  if (p.isCancel(filePath)) {
-    p.cancel("Cancelled.");
-    return;
-  }
+  }));
 
   const outPath = resolve(filePath);
   const dir = dirname(outPath);
