@@ -8,7 +8,7 @@ import {
   findLocalConfig,
   parseConfigFile,
   loadConfig,
-} from "./config";
+} from "../core/config";
 import { promptDefaults, promptTemplateLoop, saveConfig } from "./init";
 
 async function pickConfigTarget(): Promise<string | null> {

@@ -7,9 +7,9 @@
     "type": "git",
     "url": "https://github.com/al-ignat/docs2llm.git"
   },
-  "files": ["*.ts", "README.md", "LICENSE"],
+  "files": ["src/**/*.ts", "README.md", "LICENSE"],
   "bin": {
-    "docs2llm": "cli.ts"
+    "docs2llm": "src/commands/cli.ts"
   },
   "dependencies": {
     "@clack/prompts": "^0.10",

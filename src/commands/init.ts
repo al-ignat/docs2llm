@@ -8,8 +8,8 @@ import {
   GLOBAL_CONFIG_PATH,
   parseConfigFile,
   serializeConfig,
-} from "./config";
-import type { OutputFormat } from "./convert";
+} from "../core/config";
+import type { OutputFormat } from "../core/convert";
 
 export async function runInit(isGlobal: boolean) {
   const targetPath = isGlobal ? GLOBAL_CONFIG_PATH : LOCAL_CONFIG_NAME;
@@ -208,7 +208,7 @@ async function promptTemplateFeatures(format: OutputFormat): Promise<string[] | 
   const pandocArgs: string[] = [];
 
   if (featureOptions.length > 0) {
-    const features = await p.multiselect<FeatureOption[], string>({
+    const features = await p.multiselect({
       message: "What should this template include?",
       options: featureOptions,
       required: false,

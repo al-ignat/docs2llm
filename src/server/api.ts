@@ -1,7 +1,7 @@
-import { convertBytes, convertHtmlToMarkdown, isImageMime } from "./convert";
-import { getTokenStats, checkLLMFit, formatLLMFit } from "./tokens";
-import { safeFetchBytes } from "./url-safe";
-import { convertMarkdownTo, type OutboundFormat } from "./outbound";
+import { convertBytes, convertHtmlToMarkdown, isImageMime } from "../core/convert";
+import { getTokenStats, checkLLMFit, formatLLMFit } from "../core/tokens";
+import { safeFetchBytes } from "../core/url-safe";
+import { convertMarkdownTo, type OutboundFormat } from "../core/outbound";
 import {
   loadConfig,
   buildPandocArgs,
@@ -12,7 +12,7 @@ import {
   GLOBAL_CONFIG_PATH,
   type Config,
   type TemplateConfig,
-} from "./config";
+} from "../core/config";
 import { tmpdir, homedir } from "os";
 import { unlinkSync, existsSync, mkdirSync } from "fs";
 import { join, dirname, resolve } from "path";
@@ -456,6 +456,6 @@ export function startServer(port = 3000): { port: number; stop: () => void } {
 
   const actualPort = server.port;
   console.log(`docs2llm server running at http://localhost:${actualPort}`);
-  return { port: actualPort, stop: () => server.stop() };
+  return { port: actualPort ?? port, stop: () => server.stop() };
 }
 
