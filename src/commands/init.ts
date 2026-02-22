@@ -11,6 +11,7 @@ import {
 } from "../core/config";
 import type { OutputFormat } from "../core/convert";
 import { guard } from "../shared/wizard-utils";
+import { createStepTracker } from "../shared/wizard-steps";
 
 export async function runInit(isGlobal: boolean) {
   const targetPath = isGlobal ? GLOBAL_CONFIG_PATH : LOCAL_CONFIG_NAME;
@@ -47,12 +48,21 @@ export async function runInit(isGlobal: boolean) {
   }
 
   // Full wizard (new config or start fresh)
+  const steps = createStepTracker([
+    { label: "Defaults" },
+    { label: "Templates" },
+    { label: "Save" },
+  ]);
+
+  steps.show();
   const defaults = await promptDefaults();
 
   const config: Config = {
     defaults: defaults.defaults,
   };
 
+  steps.advance();
+  steps.show();
   const wantTemplate = guard(await p.confirm({
     message: "Create a named template?",
     initialValue: false,
@@ -63,7 +73,10 @@ export async function runInit(isGlobal: boolean) {
     config.templates = templates;
   }
 
+  steps.advance();
+  steps.show();
   await saveConfig(targetPath, config);
+  steps.complete();
 }
 
 async function promptDefaults(existing?: Config): Promise<{

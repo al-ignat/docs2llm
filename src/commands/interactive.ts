@@ -9,6 +9,7 @@ import { scanForFiles, formatHint, timeAgo, type FileInfo } from "../core/scan";
 import { buildPandocArgs, findLocalConfig, GLOBAL_CONFIG_PATH, type Config } from "../core/config";
 import { writeClipboard } from "../core/clipboard";
 import { guard } from "../shared/wizard-utils";
+import { createStepTracker } from "../shared/wizard-steps";
 import {
   getTokenStats,
   formatTokenStats,
@@ -40,6 +41,14 @@ export async function runInteractive(config?: Config) {
     p.intro("docs2llm");
   }
 
+  const steps = createStepTracker([
+    { label: "Select file" },
+    { label: "Format" },
+    { label: "Output" },
+    { label: "Convert" },
+  ]);
+
+  steps.show();
   const filePath = await pickFile();
 
   // Handle URL conversion
@@ -64,11 +73,21 @@ export async function runInteractive(config?: Config) {
     return;
   }
 
+  steps.advance();
   const choice = await pickFormat(filePath, config);
+  if (choice.kind === "format" && choice.format === "md") {
+    p.log.step("Format: Markdown (auto-detected from input)");
+  }
+
+  steps.advance();
+  steps.show();
   const outputDir = await pickOutputDir(filePath, config);
 
+  steps.advance();
+  steps.show();
   const templateName = choice.kind === "template" ? choice.name : undefined;
   await convert(filePath, choice.format, config, templateName, outputDir);
+  steps.complete();
 
   if (isFirstRun) {
     p.log.info("Tip: run docs2llm init to save your preferences.");
