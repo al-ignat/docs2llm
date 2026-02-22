@@ -8,6 +8,7 @@ import { buildPlan, ValidationError } from "../core/validate";
 import { scanForFiles, formatHint, type FileInfo } from "../core/scan";
 import { buildPandocArgs, findLocalConfig, GLOBAL_CONFIG_PATH, type Config } from "../core/config";
 import { writeClipboard } from "../core/clipboard";
+import { guard } from "../shared/wizard-utils";
 import {
   getTokenStats,
   formatTokenStats,
@@ -40,7 +41,6 @@ export async function runInteractive(config?: Config) {
   }
 
   const filePath = await pickFile();
-  if (!filePath) return;
 
   // Handle URL conversion
   if (filePath.startsWith("__url__:")) {
@@ -65,10 +65,7 @@ export async function runInteractive(config?: Config) {
   }
 
   const choice = await pickFormat(filePath, config);
-  if (!choice) return;
-
   const outputDir = await pickOutputDir(filePath, config);
-  if (outputDir === null) return;
 
   const templateName = choice.kind === "template" ? choice.name : undefined;
   await convert(filePath, choice.format, config, templateName, outputDir);
@@ -80,11 +77,7 @@ export async function runInteractive(config?: Config) {
   p.outro("Done!");
 }
 
-async function pickFile(depth = 0): Promise<string | null> {
-  if (depth >= 3) {
-    p.log.warn("Please select a file or action, not a separator.");
-    return null;
-  }
+async function pickFile(): Promise<string> {
   const { cwd, downloads } = scanForFiles();
   const hasFiles = cwd.length > 0 || downloads.length > 0;
 
@@ -96,8 +89,8 @@ async function pickFile(depth = 0): Promise<string | null> {
     return await manualInput();
   }
 
-  type PickValue = string | symbol;
-  const options: { value: PickValue; label: string; hint?: string }[] = [];
+  type PickValue = string;
+  const options: { value: PickValue; label: string; hint?: string; disabled?: boolean }[] = [];
 
   if (cwd.length > 0) {
     for (const file of cwd) {
@@ -111,7 +104,7 @@ async function pickFile(depth = 0): Promise<string | null> {
 
   if (downloads.length > 0) {
     if (cwd.length > 0) {
-      options.push({ value: "__sep__", label: "── Downloads ──", hint: "" });
+      options.push({ value: "__sep_dl__", label: "── Downloads ──", hint: "", disabled: true });
     }
     for (const file of downloads) {
       options.push({
@@ -121,8 +114,11 @@ async function pickFile(depth = 0): Promise<string | null> {
       });
     }
   } else if (cwd.length > 0) {
-    options.push({ value: "__sep__", label: "── Downloads ──", hint: "nothing in the last 24h" });
+    options.push({ value: "__sep_dl__", label: "── Downloads ──", hint: "nothing in the last 24h", disabled: true });
   }
+
+  // Actions separator
+  options.push({ value: "__sep_actions__", label: "── Actions ──", hint: "", disabled: true });
 
   // Batch options
   if (cwd.length > 1) {
@@ -152,19 +148,10 @@ async function pickFile(depth = 0): Promise<string | null> {
     hint: "",
   });
 
-  const picked = await p.select({
+  const picked = guard(await p.select({
     message: "Pick a file to convert:",
-    options: options as any,
-  });
-
-  if (p.isCancel(picked)) {
-    p.cancel("Cancelled.");
-    return null;
-  }
-
-  if (picked === "__sep__") {
-    return await pickFile(depth + 1);
-  }
+    options,
+  }));
 
   if (picked === "__url__") {
     return await urlInput();
@@ -175,16 +162,14 @@ async function pickFile(depth = 0): Promise<string | null> {
   }
 
   if (picked === "__batch_dl__") {
-    const { join } = await import("path");
-    const { homedir: getHome } = await import("os");
-    return `__batch__:${join(getHome(), "Downloads")}`;
+    return `__batch__:${join(homedir(), "Downloads")}`;
   }
 
   if (picked === "__browse__") {
     return await manualInput();
   }
 
-  return picked as string;
+  return picked;
 }
 
 function cleanPath(raw: string): string {
@@ -197,12 +182,12 @@ function cleanPath(raw: string): string {
   return trimmed.replace(/\\(.)/g, "$1");
 }
 
-async function manualInput(): Promise<string | null> {
-  const input = await p.text({
+async function manualInput(): Promise<string> {
+  const input = guard(await p.text({
     message: "File path:",
     placeholder: "Drag a file here or type a path",
     validate: (val) => {
-      if (!val.trim()) return "Path is required.";
+      if (!val?.trim()) return "Path is required.";
       const cleaned = cleanPath(val);
       try {
         const stat = statSync(resolve(cleaned));
@@ -211,34 +196,24 @@ async function manualInput(): Promise<string | null> {
         return "File not found.";
       }
     },
-  });
-
-  if (p.isCancel(input)) {
-    p.cancel("Cancelled.");
-    return null;
-  }
+  }));
 
   return resolve(cleanPath(input));
 }
 
-async function urlInput(): Promise<string | null> {
-  const input = await p.text({
+async function urlInput(): Promise<string> {
+  const input = guard(await p.text({
     message: "URL:",
     placeholder: "https://example.com/article",
     validate: (val) => {
-      if (!val.trim()) return "URL is required.";
+      if (!val?.trim()) return "URL is required.";
       try {
         new URL(val.trim());
       } catch {
         return "Not a valid URL. Include https://";
       }
     },
-  });
-
-  if (p.isCancel(input)) {
-    p.cancel("Cancelled.");
-    return null;
-  }
+  }));
 
   return `__url__:${input.trim()}`;
 }
@@ -246,12 +221,7 @@ async function urlInput(): Promise<string | null> {
 async function pickFormat(
   filePath: string,
   config?: Config,
-  depth = 0,
-): Promise<FormatChoice | null> {
-  if (depth >= 3) {
-    p.log.warn("Please select a format, not a separator.");
-    return null;
-  }
+): Promise<FormatChoice> {
   const isMarkdown = extname(filePath).toLowerCase() === ".md";
 
   // Inbound: skip format picker entirely, always produce markdown
@@ -264,10 +234,10 @@ async function pickFormat(
   const hasTemplates = templates && Object.keys(templates).length > 0;
 
   type OptionValue = string;
-  const options: { value: OptionValue; label: string; hint?: string }[] = [];
+  const options: { value: OptionValue; label: string; hint?: string; disabled?: boolean }[] = [];
 
   if (hasTemplates) {
-    options.push({ value: "__sep_tpl__", label: "── Templates ──", hint: "" });
+    options.push({ value: "__sep_tpl__", label: "── Templates ──", hint: "", disabled: true });
     for (const [name, tpl] of Object.entries(templates)) {
       options.push({
         value: `tpl:${name}`,
@@ -275,7 +245,7 @@ async function pickFormat(
         hint: tpl.description ?? `.${tpl.format}`,
       });
     }
-    options.push({ value: "__sep_fmt__", label: "── Formats ──", hint: "" });
+    options.push({ value: "__sep_fmt__", label: "── Formats ──", hint: "", disabled: true });
   }
 
   options.push(
@@ -284,36 +254,25 @@ async function pickFormat(
     { value: "fmt:html", label: "HTML", hint: ".html" },
   );
 
-  const picked = await p.select({
+  const picked = guard(await p.select({
     message: "Output format:",
-    options: options as any,
-  });
+    options,
+  }));
 
-  if (p.isCancel(picked)) {
-    p.cancel("Cancelled.");
-    return null;
-  }
-
-  if (picked === "__sep_tpl__" || picked === "__sep_fmt__") {
-    return await pickFormat(filePath, config, depth + 1);
-  }
-
-  const val = picked as string;
-
-  if (val.startsWith("tpl:")) {
-    const name = val.slice(4);
+  if (picked.startsWith("tpl:")) {
+    const name = picked.slice(4);
     const tpl = templates![name];
     return { kind: "template", name, format: tpl.format };
   }
 
-  const format = val.slice(4) as OutputFormat;
+  const format = picked.slice(4) as OutputFormat;
   return { kind: "format", format };
 }
 
 async function pickOutputDir(
   filePath: string,
   config?: Config
-): Promise<string | undefined | null> {
+): Promise<string | undefined> {
   const fileDir = dirname(resolve(filePath));
   const cwd = process.cwd();
 
@@ -342,15 +301,10 @@ async function pickOutputDir(
     }
   }
 
-  const picked = await p.select({
+  const picked = guard(await p.select({
     message: "Save to:",
-    options: options as any,
-  });
-
-  if (p.isCancel(picked)) {
-    p.cancel("Cancelled.");
-    return null;
-  }
+    options,
+  }));
 
   switch (picked) {
     case "cwd":
@@ -360,17 +314,13 @@ async function pickOutputDir(
     case "config":
       return resolve(configDefault!);
     case "custom": {
-      const dir = await p.text({
+      const dir = guard(await p.text({
         message: "Output directory:",
         placeholder: "./out",
         validate: (val) => {
-          if (!val.trim()) return "Path is required.";
+          if (!val?.trim()) return "Path is required.";
         },
-      });
-      if (p.isCancel(dir)) {
-        p.cancel("Cancelled.");
-        return null;
-      }
+      }));
       return resolve(dir);
     }
     default:

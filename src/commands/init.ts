@@ -10,6 +10,7 @@ import {
   serializeConfig,
 } from "../core/config";
 import type { OutputFormat } from "../core/convert";
+import { guard } from "../shared/wizard-utils";
 
 export async function runInit(isGlobal: boolean) {
   const targetPath = isGlobal ? GLOBAL_CONFIG_PATH : LOCAL_CONFIG_NAME;
@@ -19,19 +20,17 @@ export async function runInit(isGlobal: boolean) {
   if (existsSync(targetPath)) {
     const existing = parseConfigFile(targetPath);
 
-    const action = await p.select<string>({
+    const action = guard(await p.select<string>({
       message: `Config found at ${targetPath}. What would you like to do?`,
       options: [
         { value: "add-template" as string, label: "Add a template" },
         { value: "edit-defaults" as string, label: "Edit defaults" },
         { value: "start-fresh" as string, label: "Start fresh (overwrite)" },
       ],
-    });
-    if (p.isCancel(action)) { p.cancel("Cancelled."); return; }
+    }));
 
     if (action === "add-template") {
       const templates = await promptTemplateLoop(existing.templates);
-      if (!templates) return;
       existing.templates = { ...existing.templates, ...templates };
       await saveConfig(targetPath, existing);
       return;
@@ -39,7 +38,6 @@ export async function runInit(isGlobal: boolean) {
 
     if (action === "edit-defaults") {
       const defaults = await promptDefaults(existing);
-      if (!defaults) return;
       existing.defaults = defaults.defaults;
       await saveConfig(targetPath, existing);
       return;
@@ -50,23 +48,19 @@ export async function runInit(isGlobal: boolean) {
 
   // Full wizard (new config or start fresh)
   const defaults = await promptDefaults();
-  if (!defaults) return;
 
   const config: Config = {
     defaults: defaults.defaults,
   };
 
-  const wantTemplate = await p.confirm({
+  const wantTemplate = guard(await p.confirm({
     message: "Create a named template?",
     initialValue: false,
-  });
-  if (p.isCancel(wantTemplate)) { p.cancel("Cancelled."); return; }
+  }));
 
   if (wantTemplate) {
     const templates = await promptTemplateLoop();
-    if (templates) {
-      config.templates = templates;
-    }
+    config.templates = templates;
   }
 
   await saveConfig(targetPath, config);
@@ -74,8 +68,8 @@ export async function runInit(isGlobal: boolean) {
 
 async function promptDefaults(existing?: Config): Promise<{
   defaults: Config["defaults"];
-} | null> {
-  const format = await p.select<OutputFormat>({
+}> {
+  const format = guard(await p.select<OutputFormat>({
     message: "Default output format for Markdown files:",
     initialValue: existing?.defaults?.format,
     options: [
@@ -83,25 +77,22 @@ async function promptDefaults(existing?: Config): Promise<{
       { value: "pptx" as OutputFormat, label: "PowerPoint", hint: ".pptx" },
       { value: "html" as OutputFormat, label: "HTML", hint: ".html" },
     ],
-  });
-  if (p.isCancel(format)) { p.cancel("Cancelled."); return null; }
+  }));
 
-  const outputDirChoice = await p.select<string>({
+  const outputDirChoice = guard(await p.select<string>({
     message: "Output directory:",
     options: [
       { value: "same" as string, label: "Same as input file" },
       { value: "custom" as string, label: "Custom path" },
     ],
-  });
-  if (p.isCancel(outputDirChoice)) { p.cancel("Cancelled."); return null; }
+  }));
 
   let outputDir: string | undefined;
   if (outputDirChoice === "custom") {
-    const dir = await p.text({
+    const dir = guard(await p.text({
       message: "Output directory path:",
       placeholder: existing?.defaults?.outputDir ?? "./out",
-    });
-    if (p.isCancel(dir)) { p.cancel("Cancelled."); return null; }
+    }));
     outputDir = dir;
   }
 
@@ -115,15 +106,11 @@ async function promptDefaults(existing?: Config): Promise<{
 
 async function promptTemplateLoop(
   existing?: Record<string, TemplateConfig>
-): Promise<Record<string, TemplateConfig> | null> {
+): Promise<Record<string, TemplateConfig>> {
   const templates: Record<string, TemplateConfig> = {};
 
   while (true) {
     const tpl = await promptTemplate(existing ? { ...existing, ...templates } : templates);
-    if (!tpl) {
-      // If user cancelled on first template, return null; otherwise return what we have
-      return Object.keys(templates).length > 0 ? templates : null;
-    }
     templates[tpl.name] = tpl.config;
     p.log.success(`Template "${tpl.name}" added.`);
 
@@ -131,10 +118,11 @@ async function promptTemplateLoop(
       message: "Create another template?",
       initialValue: false,
     });
+    // Cancel or "no" = stop adding templates
     if (p.isCancel(another) || !another) break;
   }
 
-  return Object.keys(templates).length > 0 ? templates : null;
+  return templates;
 }
 
 async function promptTemplate(
@@ -142,36 +130,32 @@ async function promptTemplate(
 ): Promise<{
   name: string;
   config: TemplateConfig;
-} | null> {
-  const name = await p.text({
+}> {
+  const name = guard(await p.text({
     message: "Template name:",
     placeholder: "report",
     validate: (val) => {
-      if (!val.trim()) return "Name is required.";
+      if (!val?.trim()) return "Name is required.";
       if (/\s/.test(val)) return "No spaces allowed.";
       if (existingTemplates?.[val.trim()]) return `Template "${val.trim()}" already exists.`;
     },
-  });
-  if (p.isCancel(name)) return null;
+  }));
 
-  const format = await p.select<OutputFormat>({
+  const format = guard(await p.select<OutputFormat>({
     message: "Template output format:",
     options: [
       { value: "docx" as OutputFormat, label: "Word", hint: ".docx" },
       { value: "pptx" as OutputFormat, label: "PowerPoint", hint: ".pptx" },
       { value: "html" as OutputFormat, label: "HTML", hint: ".html" },
     ],
-  });
-  if (p.isCancel(format)) return null;
+  }));
 
-  const desc = await p.text({
+  const desc = guard(await p.text({
     message: "Description (optional):",
     placeholder: "Company report with TOC",
-  });
-  if (p.isCancel(desc)) return null;
+  }));
 
   const pandocArgs = await promptTemplateFeatures(format);
-  if (pandocArgs === null) return null;
 
   return {
     name,
@@ -183,7 +167,7 @@ async function promptTemplate(
   };
 }
 
-async function promptTemplateFeatures(format: OutputFormat): Promise<string[] | null> {
+async function promptTemplateFeatures(format: OutputFormat): Promise<string[]> {
   type FeatureOption = { value: string; label: string };
 
   const featureOptions: FeatureOption[] = [];
@@ -208,12 +192,11 @@ async function promptTemplateFeatures(format: OutputFormat): Promise<string[] | 
   const pandocArgs: string[] = [];
 
   if (featureOptions.length > 0) {
-    const features = await p.multiselect({
+    const features = guard(await p.multiselect({
       message: "What should this template include?",
       options: featureOptions,
       required: false,
-    });
-    if (p.isCancel(features)) { p.cancel("Cancelled."); return null; }
+    }));
 
     for (const feat of features) {
       if (feat === "toc") {
@@ -221,42 +204,38 @@ async function promptTemplateFeatures(format: OutputFormat): Promise<string[] | 
       } else if (feat === "standalone") {
         pandocArgs.push("--standalone");
       } else if (feat === "reference-doc") {
-        const refPath = await p.text({
+        const refPath = guard(await p.text({
           message: "Path to reference document:",
           placeholder: `./template.${format}`,
           validate: (val) => {
-            if (!val.trim()) return "Path is required.";
+            if (!val?.trim()) return "Path is required.";
           },
-        });
-        if (p.isCancel(refPath)) { p.cancel("Cancelled."); return null; }
+        }));
         pandocArgs.push(`--reference-doc=${refPath.trim()}`);
       } else if (feat === "css") {
-        const cssPath = await p.text({
+        const cssPath = guard(await p.text({
           message: "Path to CSS stylesheet:",
           placeholder: "./style.css",
           validate: (val) => {
-            if (!val.trim()) return "Path is required.";
+            if (!val?.trim()) return "Path is required.";
           },
-        });
-        if (p.isCancel(cssPath)) { p.cancel("Cancelled."); return null; }
+        }));
         pandocArgs.push(`--css=${cssPath.trim()}`);
       }
     }
   }
 
   // Advanced escape hatch
-  const wantAdvanced = await p.confirm({
+  const wantAdvanced = guard(await p.confirm({
     message: "Advanced: additional Pandoc args?",
     initialValue: false,
-  });
-  if (p.isCancel(wantAdvanced)) { p.cancel("Cancelled."); return null; }
+  }));
 
   if (wantAdvanced) {
-    const extra = await p.text({
+    const extra = guard(await p.text({
       message: "Pandoc args (space-separated):",
       placeholder: "--shift-heading-level-by=-1",
-    });
-    if (p.isCancel(extra)) { p.cancel("Cancelled."); return null; }
+    }));
     const extraArgs = extra.trim().split(/\s+/).filter(Boolean);
     pandocArgs.push(...extraArgs);
   }
