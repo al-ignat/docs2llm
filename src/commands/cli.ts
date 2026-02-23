@@ -35,6 +35,34 @@ function confirm(prompt: string): Promise<boolean> {
 
 const VALID_FORMATS = new Set(["md", "json", "yaml", "docx", "pptx", "html"]);
 
+// Output mode flags (set in main())
+let quietMode = false;
+let jsonMode = false;
+
+function cliLog(msg: string) {
+  if (!quietMode && !jsonMode) console.log(msg);
+}
+function cliWarn(msg: string) {
+  if (!quietMode && !jsonMode) console.log(msg);
+}
+function cliError(msg: string) {
+  if (!jsonMode) console.error(msg);
+}
+function cliResult(msg: string) {
+  if (!jsonMode) console.log(msg);
+}
+
+interface ConversionResult {
+  success: boolean;
+  input: string;
+  output?: string;
+  format: string;
+  tokens?: number;
+  duration_ms: number;
+  ocr_used?: boolean;
+  error?: string;
+}
+
 function parseArgs(argv: string[]) {
   // Bun.argv: [bun, script, ...args]
   const args = argv.slice(2);
@@ -48,6 +76,9 @@ function parseArgs(argv: string[]) {
   let template: string | null = null;
   let isGlobal = false;
   let ocr: OcrOptions | undefined;
+  let yes = false;
+  let json = false;
+  let quiet = false;
 
   // Watch subcommand options
   let watchTo: string | null = null;
@@ -160,6 +191,12 @@ function parseArgs(argv: string[]) {
         process.exit(1);
       }
       chunks = true;
+    } else if (arg === "-Y" || arg === "--yes") {
+      yes = true;
+    } else if (arg === "--json") {
+      json = true;
+    } else if (arg === "-q" || arg === "--quiet") {
+      quiet = true;
     } else if (arg === "-h" || arg === "--help") {
       printHelp();
       process.exit(0);
@@ -168,7 +205,7 @@ function parseArgs(argv: string[]) {
     }
   }
 
-  return { input, format, output, formatExplicit, force, pandocArgs, command, template, isGlobal, ocr, pasteOpts: undefined as PasteOptions | undefined, watchTo: null as string | null, useStdin, useStdout, chunks, chunkSize };
+  return { input, format, output, formatExplicit, force, pandocArgs, command, template, isGlobal, ocr, pasteOpts: undefined as PasteOptions | undefined, watchTo: null as string | null, useStdin, useStdout, chunks, chunkSize, yes, json, quiet };
 }
 
 function printHelp() {
@@ -225,6 +262,9 @@ Options:
   --ocr                   Enable OCR for scanned documents
   --ocr=force             Force OCR even if text is available
   --ocr-lang <code>       OCR language (e.g., deu, fra, jpn)
+  -Y, --yes               Accept all defaults (implies --force)
+  -q, --quiet             Only show errors and final output path
+  --json                  Machine-readable JSON output (implies --yes)
   --stdin                 Read input from stdin instead of a file
   --stdout                Write output to stdout instead of a file
   --chunks                Split output into chunks (for RAG pipelines)
@@ -276,8 +316,13 @@ Tip: most source code files are also supported.
 }
 
 async function main() {
-  const { input, format, output, formatExplicit, force, pandocArgs, command, template, isGlobal, ocr, pasteOpts, watchTo, useStdin, useStdout, chunks, chunkSize } =
+  const { input, format, output, formatExplicit, force, pandocArgs, command, template, isGlobal, ocr, pasteOpts, watchTo, useStdin, useStdout, chunks, chunkSize, yes = false, json = false, quiet = false } =
     parseArgs(Bun.argv);
+
+  // --json implies --yes, --yes implies --force
+  const effectiveYes = yes || json;
+  quietMode = quiet;
+  jsonMode = json;
 
   // Handle subcommands
   if (command === "init") {
@@ -324,11 +369,27 @@ async function main() {
     return;
   }
 
+  // --yes requires a file path
+  if (effectiveYes && !input && !command) {
+    console.error("✗ --yes requires a file path.");
+    process.exit(1);
+  }
+
+  // Non-TTY detection
+  if (!input && !command && !process.stdin.isTTY) {
+    console.error(
+      "✗ Non-interactive terminal detected.\n" +
+      "  Provide a file path: docs2llm <file>\n" +
+      "  Or pipe with flags: cat doc.pdf | docs2llm --stdin --stdout"
+    );
+    process.exit(1);
+  }
+
   // Load config
   const config = loadConfig();
 
   // Apply config defaults
-  const effectiveForce = force || config.defaults?.force || false;
+  const effectiveForce = force || effectiveYes || config.defaults?.force || false;
 
   // Resolve format: explicit -f > template format > config default > "md" (validate handles smart default)
   let effectiveFormat = format;
@@ -342,7 +403,7 @@ async function main() {
         effectiveFormatExplicit = true;
       }
     } catch (err: any) {
-      console.error(`✗ ${err.message}`);
+      cliError(`✗ ${err.message}`);
       process.exit(1);
     }
   }
@@ -377,7 +438,7 @@ async function main() {
     stat = statSync(resolvedInput);
   } catch {
     const cwd = process.cwd().replace(homedir(), "~");
-    console.error(
+    cliError(
       `✗ Can't find '${input}'.\n` +
       `  Current folder: ${cwd}\n` +
       `  Tip: drag the file from Finder into this terminal, or use an absolute path.\n` +
@@ -402,7 +463,7 @@ async function main() {
       effectiveFormatExplicit, effectiveForce, pandocArgs, config, template, ocr
     );
   } else {
-    console.error(
+    cliError(
       `✗ '${input}' is not a file or folder.\n` +
       `  Tip: check the path and try again.`
     );
@@ -424,6 +485,7 @@ async function convertSingleFile(
   chunks?: boolean,
   chunkSize?: number | null,
 ) {
+  const t0 = performance.now();
   let plan;
   try {
     plan = buildPlan(filePath, format, {
@@ -433,9 +495,14 @@ async function convertSingleFile(
     });
   } catch (err: any) {
     if (err instanceof ValidationError) {
-      console.error(`✗ ${err.message}`);
+      if (jsonMode) {
+        const result: ConversionResult = { success: false, input: filePath, format, duration_ms: Math.round(performance.now() - t0), error: err.message };
+        process.stdout.write(JSON.stringify(result));
+        process.exit(1);
+      }
+      cliError(`✗ ${err.message}`);
       if (err.message.includes("Outbound formats")) {
-        console.error("  Tip: only .md files can be converted to docx/pptx/html.");
+        cliError("  Tip: only .md files can be converted to docx/pptx/html.");
       }
       process.exit(1);
     }
@@ -449,7 +516,7 @@ async function convertSingleFile(
     );
     if (!plan.pandocArgs.length) plan.pandocArgs = undefined;
   } else if (cliPandocArgs?.length && plan.direction === "inbound") {
-    console.log(`⚠ Pandoc args ignored for inbound conversion (${filePath})`);
+    cliWarn(`⚠ Pandoc args ignored for inbound conversion (${filePath})`);
   }
 
   if (!useStdout && !force && existsSync(plan.outputPath)) {
@@ -463,22 +530,29 @@ async function convertSingleFile(
         outputDir,
         pandocArgs: plan.pandocArgs,
       });
-      console.log(`✓ ${filePath} → ${result.outputPath}`);
+      if (jsonMode) {
+        const jsonResult: ConversionResult = { success: true, input: filePath, output: result.outputPath, format: plan.format, duration_ms: Math.round(performance.now() - t0) };
+        process.stdout.write(JSON.stringify(jsonResult));
+      } else {
+        cliResult(`✓ ${filePath} → ${result.outputPath}`);
+      }
     } else {
       // Auto-enable OCR for images (no text layer to extract)
       const effectiveOcr = (!ocr?.enabled && isImageFile(filePath))
         ? { enabled: true, force: true }
         : ocr;
       if (effectiveOcr !== ocr && !useStdout) {
-        console.log("⚠ Image detected. Running OCR…");
+        cliLog("⚠ Image detected. Running OCR…");
       }
 
       let result = await convertFile(filePath, plan.format, { ocr: effectiveOcr });
+      let usedOcr = !!effectiveOcr?.enabled;
 
       // Auto-detect scanned PDFs
       if (!effectiveOcr?.enabled && looksLikeScannedPdf(filePath, result.content)) {
-        if (!useStdout) console.log("⚠ This looks like a scanned document. Retrying with OCR…");
+        if (!useStdout) cliLog("⚠ This looks like a scanned document. Retrying with OCR…");
         result = await convertFile(filePath, plan.format, { ocr: { enabled: true, force: true } });
+        usedOcr = true;
       }
 
       // --chunks mode: split and output as JSON
@@ -496,7 +570,7 @@ async function convertSingleFile(
           process.stdout.write(JSON.stringify(output, null, 2));
         } else {
           await writeOutput(plan.outputPath, JSON.stringify(output, null, 2));
-          console.log(`✓ ${filePath} → ${plan.outputPath} (${splitResult.parts.length} chunks)`);
+          cliResult(`✓ ${filePath} → ${plan.outputPath} (${splitResult.parts.length} chunks)`);
         }
         return;
       }
@@ -509,21 +583,32 @@ async function convertSingleFile(
 
       await writeOutput(plan.outputPath, result.formatted);
       const stats = getTokenStats(result.content);
-      console.log(`✓ ${filePath} → ${plan.outputPath} (${formatTokenStats(stats)})`);
+
+      if (jsonMode) {
+        const jsonResult: ConversionResult = { success: true, input: filePath, output: plan.outputPath, format: plan.format, tokens: stats.tokens, duration_ms: Math.round(performance.now() - t0), ocr_used: usedOcr || undefined };
+        process.stdout.write(JSON.stringify(jsonResult));
+      } else {
+        cliResult(`✓ ${filePath} → ${plan.outputPath} (${formatTokenStats(stats)})`);
+      }
 
       // Quality warning
       if (result.qualityScore != null && result.qualityScore < 0.5) {
-        console.log("⚠ Some text may not have been extracted correctly. Check the output.");
+        cliWarn("⚠ Some text may not have been extracted correctly. Check the output.");
       }
     }
   } catch (err: any) {
     const msg = err.message ?? String(err);
-    console.error(`✗ ${filePath}: ${msg}`);
+    if (jsonMode) {
+      const jsonResult: ConversionResult = { success: false, input: filePath, format: plan.format, duration_ms: Math.round(performance.now() - t0), error: msg };
+      process.stdout.write(JSON.stringify(jsonResult));
+      process.exit(1);
+    }
+    cliError(`✗ ${filePath}: ${msg}`);
     if (msg.includes("Pandoc")) {
-      console.error("  Tip: install Pandoc with: brew install pandoc");
+      cliError("  Tip: install Pandoc with: brew install pandoc");
     }
     if (msg.includes("Unsupported") || msg.includes("format")) {
-      console.error("  Tip: run docs2llm formats to see what's supported.");
+      cliError("  Tip: run docs2llm formats to see what's supported.");
     }
     process.exit(1);
   }
@@ -540,6 +625,7 @@ async function convertFolder(
   templateName?: string | null,
   ocr?: OcrOptions
 ) {
+  const t0 = performance.now();
   const { readdirSync } = await import("fs");
   const { join, basename } = await import("path");
 
@@ -548,7 +634,7 @@ async function convertFolder(
     .map((e) => join(dir, e.name));
 
   if (files.length === 0) {
-    console.log("No files found.");
+    cliLog("No files found.");
     return;
   }
 
@@ -563,7 +649,7 @@ async function convertFolder(
       } catch { return false; }
     });
     if (hasInbound) {
-      console.log("⚠ Pandoc args ignored for inbound conversions.");
+      cliWarn("⚠ Pandoc args ignored for inbound conversions.");
     }
   }
 
@@ -582,7 +668,7 @@ async function convertFolder(
       } catch { /* skip */ }
     }
     if (overwrites.length > 0) {
-      console.log(`${overwrites.length} file(s) would be overwritten:\n  ${overwrites.join(", ")}`);
+      cliLog(`${overwrites.length} file(s) would be overwritten:\n  ${overwrites.join(", ")}`);
       const ok = await confirm("Continue? [y/N] ");
       if (!ok) process.exit(0);
     }
@@ -615,7 +701,7 @@ async function convertFolder(
       filePlans.push({ file, plan });
     } catch (err: any) {
       if (err instanceof ValidationError) {
-        console.log(`⊘ ${file}: ${err.message}`);
+        cliLog(`⊘ ${file}: ${err.message}`);
         skipped++;
       } else {
         throw err;
@@ -627,32 +713,38 @@ async function convertFolder(
   const BATCH_SIZE = 4;
   let ok = 0;
   let fail = 0;
+  const jsonResults: ConversionResult[] = [];
 
   for (let i = 0; i < filePlans.length; i += BATCH_SIZE) {
     const batch = filePlans.slice(i, i + BATCH_SIZE);
     const results = await Promise.allSettled(
       batch.map(async ({ file, plan }) => {
+        const ft0 = performance.now();
         if (plan.direction === "outbound") {
           const result = await convertFile(file, plan.format, {
             outputDir,
             pandocArgs: plan.pandocArgs,
           });
-          console.log(`✓ ${file} → ${result.outputPath}`);
+          cliResult(`✓ ${file} → ${result.outputPath}`);
+          if (jsonMode) jsonResults.push({ success: true, input: file, output: result.outputPath, format: plan.format, duration_ms: Math.round(performance.now() - ft0) });
         } else {
           const batchOcr = (!ocr?.enabled && isImageFile(file))
             ? { enabled: true, force: true }
             : ocr;
           let result = await convertFile(file, plan.format, { ocr: batchOcr });
+          let usedOcr = !!batchOcr?.enabled;
           if (!batchOcr?.enabled && looksLikeScannedPdf(file, result.content)) {
-            console.log(`⚠ ${file}: scanned document detected, retrying with OCR…`);
+            cliLog(`⚠ ${file}: scanned document detected, retrying with OCR…`);
             result = await convertFile(file, plan.format, { ocr: { enabled: true, force: true } });
+            usedOcr = true;
           }
           await writeOutput(plan.outputPath, result.formatted);
           const stats = getTokenStats(result.content);
-          console.log(`✓ ${file} → ${plan.outputPath} (${formatTokenStats(stats)})`);
+          cliResult(`✓ ${file} → ${plan.outputPath} (${formatTokenStats(stats)})`);
           if (result.qualityScore != null && result.qualityScore < 0.5) {
-            console.log(`  ⚠ Low quality extraction. Check the output.`);
+            cliWarn(`  ⚠ Low quality extraction. Check the output.`);
           }
+          if (jsonMode) jsonResults.push({ success: true, input: file, output: plan.outputPath, format: plan.format, tokens: stats.tokens, duration_ms: Math.round(performance.now() - ft0), ocr_used: usedOcr || undefined });
         }
       })
     );
@@ -662,22 +754,27 @@ async function convertFolder(
         ok++;
       } else {
         const reason = (results[j] as PromiseRejectedResult).reason;
-        console.error(`✗ ${batch[j].file}: ${reason?.message ?? reason}`);
+        cliError(`✗ ${batch[j].file}: ${reason?.message ?? reason}`);
         fail++;
+        if (jsonMode) jsonResults.push({ success: false, input: batch[j].file, format, duration_ms: 0, error: reason?.message ?? String(reason) });
       }
     }
   }
 
-  const parts = [`${ok} converted`, `${fail} failed`];
-  if (skipped > 0) parts.push(`${skipped} skipped`);
-  console.log(`\nDone: ${parts.join(", ")}.`);
+  if (jsonMode) {
+    process.stdout.write(JSON.stringify({ results: jsonResults, total: filePlans.length + skipped, succeeded: ok, failed: fail, duration_ms: Math.round(performance.now() - t0) }));
+  } else {
+    const parts = [`${ok} converted`, `${fail} failed`];
+    if (skipped > 0) parts.push(`${skipped} skipped`);
+    cliLog(`\nDone: ${parts.join(", ")}.`);
+  }
 }
 
 async function convertUrl(url: string, format: OutputFormat, outputDir?: string, force?: boolean, useStdout?: boolean) {
   const { basename: pathBasename } = await import("path");
 
   try {
-    if (!useStdout) console.log(`Fetching ${url}…`);
+    if (!useStdout) cliLog(`Fetching ${url}…`);
     const result = await fetchAndConvert(url);
     const formatted = formatOutput(result.content, url, "text/html", {}, format);
 
@@ -701,9 +798,9 @@ async function convertUrl(url: string, format: OutputFormat, outputDir?: string,
 
     await writeOutput(outPath, formatted);
     const stats = getTokenStats(result.content);
-    console.log(`✓ ${url} → ${outPath} (${formatTokenStats(stats)})`);
+    cliResult(`✓ ${url} → ${outPath} (${formatTokenStats(stats)})`);
   } catch (err: any) {
-    console.error(
+    cliError(
       `✗ Failed to fetch '${url}'.\n` +
       `  ${err.message ?? err}\n` +
       `  Tip: check the URL is correct and accessible.`
