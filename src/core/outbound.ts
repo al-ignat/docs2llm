@@ -89,7 +89,13 @@ export async function convertMarkdownTo(
 ): Promise<string> {
   if (!(await checkPandoc())) {
     throw new Error(
-      "Pandoc is required for outbound conversion (md → docx/pptx/html).\nInstall: brew install pandoc"
+      "Pandoc is required for outbound conversion (md → docx/pptx/html).\n" +
+      "Install:\n" +
+      "  macOS:   brew install pandoc\n" +
+      "  Ubuntu:  sudo apt install pandoc\n" +
+      "  Windows: choco install pandoc\n" +
+      "  Other:   https://pandoc.org/installing.html\n\n" +
+      "Note: inbound conversion (documents → text) works without Pandoc."
     );
   }
 

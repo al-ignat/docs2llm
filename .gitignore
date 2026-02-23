@@ -4,3 +4,9 @@ node_modules/
 CLAUDE.md
 .docs2llm.yaml
 .con-the-doc.yaml
+
+# Build output
+/docs2llm
+*.dylib
+*.so
+*.dll

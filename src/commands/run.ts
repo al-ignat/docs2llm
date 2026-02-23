@@ -185,7 +185,8 @@ export async function convertSingleFile(
     }
     cliError(`✗ ${filePath}: ${msg}`);
     if (msg.includes("Pandoc")) {
-      cliError("  Tip: install Pandoc with: brew install pandoc");
+      cliError("  Tip: install Pandoc — brew install pandoc (macOS), sudo apt install pandoc (Ubuntu)");
+      cliError("  Note: inbound conversion (documents → text) works without Pandoc.");
     }
     if (msg.includes("Unsupported") || msg.includes("format")) {
       cliError("  Tip: run docs2llm formats to see what's supported.");
