@@ -1,4 +1,4 @@
-import { convertBytes, convertHtmlToMarkdown, isImageMime } from "../core/convert";
+import { convertBytes, convertHtmlToMarkdown, isImageMime, isTesseractError, TESSERACT_INSTALL_HINT } from "../core/convert";
 import { getTokenStats, checkLLMFit, formatLLMFit } from "../core/tokens";
 import { safeFetchBytes } from "../core/url-safe";
 import { convertMarkdownTo, type OutboundFormat } from "../core/outbound";
@@ -98,6 +98,31 @@ async function handleConvert(req: Request): Promise<Response> {
       fits: fits.map((f) => ({ name: f.name, limit: f.limit, fits: f.fits })),
     });
   } catch (err: any) {
+    // Auto-triggered OCR (images): fall back to non-OCR and include warning
+    if (isTesseractError(err) && isImage && !ocrEnabled && !ocrForce) {
+      try {
+        const result = await convertBytes(bytes, mime);
+        const stats = getTokenStats(result.content);
+        const fits = checkLLMFit(stats.tokens);
+        return Response.json({
+          content: result.content,
+          filename: file.name,
+          mimeType: result.mimeType,
+          metadata: result.metadata,
+          qualityScore: result.qualityScore ?? null,
+          words: stats.words,
+          tokens: stats.tokens,
+          fits: fits.map((f) => ({ name: f.name, limit: f.limit, fits: f.fits })),
+          warning: "OCR unavailable (Tesseract not installed). Result may be incomplete for images.",
+        });
+      } catch (fallbackErr: any) {
+        return Response.json({ error: fallbackErr.message ?? String(fallbackErr) }, { status: 500 });
+      }
+    }
+    // Explicit OCR requested by user: fail with install instructions
+    if (isTesseractError(err)) {
+      return Response.json({ error: TESSERACT_INSTALL_HINT }, { status: 500 });
+    }
     return Response.json({ error: err.message ?? String(err) }, { status: 500 });
   }
 }

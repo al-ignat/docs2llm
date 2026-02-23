@@ -8,6 +8,10 @@
     "url": "https://github.com/al-ignat/docs2llm.git"
   },
   "files": ["src/**/*.ts", "README.md", "LICENSE"],
+  "scripts": {
+    "build": "bun run scripts/build.ts",
+    "dev": "bun run src/commands/cli.ts"
+  },
   "bin": {
     "docs2llm": "src/commands/cli.ts"
   },

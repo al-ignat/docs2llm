@@ -1,5 +1,8 @@
 #!/usr/bin/env bun
 
+declare const __VERSION__: string;
+const VERSION = typeof __VERSION__ !== "undefined" ? __VERSION__ : "dev";
+
 import { resolve } from "path";
 import { statSync, mkdirSync, existsSync } from "fs";
 import { homedir } from "os";
@@ -154,6 +157,9 @@ function parseArgs(argv: string[]) {
       json = true;
     } else if (arg === "-q" || arg === "--quiet") {
       quiet = true;
+    } else if (arg === "-v" || arg === "--version") {
+      console.log(`docs2llm ${VERSION}`);
+      process.exit(0);
     } else if (arg === "-h" || arg === "--help") {
       printHelp();
       process.exit(0);
@@ -227,6 +233,7 @@ Options:
   --chunks                Split output into chunks (for RAG pipelines)
   --chunk-size <tokens>   Target tokens per chunk (default: 4000)
   --                      Pass remaining args to Pandoc (outbound only)
+  -v, --version           Show version
   -h, --help              Show this help
 `);
 }

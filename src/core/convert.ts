@@ -1,6 +1,7 @@
 import { stringify as yamlStringify } from "yaml";
 import { extname } from "path";
 import { convertMarkdownTo, type OutboundFormat } from "./outbound";
+import { countWords, estimateTokens } from "./tokens";
 
 export type OutputFormat = "md" | "json" | "yaml" | "docx" | "pptx" | "html";
 
@@ -183,6 +184,20 @@ export function isImageFile(filePath: string): boolean {
   return IMAGE_EXTS.has(extname(filePath).toLowerCase());
 }
 
+/** Check if an error is caused by missing Tesseract installation */
+export function isTesseractError(err: unknown): boolean {
+  if (!err) return false;
+  const msg = err instanceof Error ? err.message : String(err);
+  return /TESSDATA_PREFIX|tesseract|tessdata/i.test(msg);
+}
+
+export const TESSERACT_INSTALL_HINT =
+  "Tesseract OCR is not installed. To enable OCR:\n" +
+  "  macOS:   brew install tesseract\n" +
+  "  Ubuntu:  sudo apt install tesseract-ocr\n" +
+  "  Windows: choco install tesseract\n" +
+  "  More:    https://github.com/tesseract-ocr/tesseract";
+
 export function formatOutput(
   content: string,
   source: string,
@@ -196,7 +211,6 @@ export function formatOutput(
   }
 
   // Rich structured output with token stats
-  const { countWords, estimateTokens } = require("./tokens");
   const words = countWords(content);
   const tokens = estimateTokens(content);
 

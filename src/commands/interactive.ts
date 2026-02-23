@@ -2,7 +2,7 @@ import * as p from "@clack/prompts";
 import { resolve, extname, dirname, join, basename } from "path";
 import { statSync, existsSync, mkdirSync } from "fs";
 import { homedir } from "os";
-import { convertFile, looksLikeScannedPdf, isImageFile, type OutputFormat } from "../core/convert";
+import { convertFile, looksLikeScannedPdf, isImageFile, isTesseractError, TESSERACT_INSTALL_HINT, type OutputFormat } from "../core/convert";
 import { writeOutput } from "../core/output";
 import { buildPlan, ValidationError } from "../core/validate";
 import { scanForFiles, formatHint, timeAgo, type FileInfo } from "../core/scan";
@@ -394,11 +394,26 @@ async function convert(
       finalOutputPath = result.outputPath ?? plan.outputPath;
       s.stop(`${result.sourcePath} → ${finalOutputPath}`);
     } else {
-      const autoOcr = isImageFile(filePath) ? { enabled: true, force: true } : undefined;
-      let result = await convertFile(filePath, plan.format, autoOcr ? { ocr: autoOcr } : undefined);
+      const isImg = isImageFile(filePath);
+      let result: Awaited<ReturnType<typeof convertFile>>;
+
+      if (isImg) {
+        try {
+          result = await convertFile(filePath, plan.format, { ocr: { enabled: true, force: true } });
+        } catch (ocrErr: any) {
+          if (isTesseractError(ocrErr)) {
+            p.log.warn("OCR unavailable (Tesseract not installed). Converting without OCR…");
+            result = await convertFile(filePath, plan.format);
+          } else {
+            throw ocrErr;
+          }
+        }
+      } else {
+        result = await convertFile(filePath, plan.format);
+      }
 
       // Auto-detect scanned PDFs and offer OCR
-      if (!autoOcr && looksLikeScannedPdf(filePath, result.content)) {
+      if (!isImg && looksLikeScannedPdf(filePath, result.content)) {
         s.stop("Scanned document detected");
         const useOcr = await p.confirm({
           message: "This looks like a scanned document. Extract text with OCR?",
@@ -406,7 +421,17 @@ async function convert(
         });
         if (!p.isCancel(useOcr) && useOcr) {
           s.start("Running OCR…");
-          result = await convertFile(filePath, plan.format, { ocr: { enabled: true, force: true } });
+          try {
+            result = await convertFile(filePath, plan.format, { ocr: { enabled: true, force: true } });
+          } catch (ocrErr: any) {
+            if (isTesseractError(ocrErr)) {
+              s.stop("OCR failed");
+              p.log.error(TESSERACT_INSTALL_HINT);
+              p.log.info("Continuing with non-OCR result.");
+            } else {
+              throw ocrErr;
+            }
+          }
         }
       }
 
@@ -559,14 +584,34 @@ async function convertBatchInteractive(dir: string, config?: Config) {
     const name = basename(file);
     try {
       // Auto-enable OCR for images
-      const autoOcr = isImageFile(file) ? { enabled: true, force: true } : undefined;
-      let result = await convertFile(file, "md", autoOcr ? { ocr: autoOcr } : undefined);
-      let usedOcr = !!autoOcr;
+      const isImg = isImageFile(file);
+      let result: Awaited<ReturnType<typeof convertFile>>;
+      let usedOcr = false;
+
+      if (isImg) {
+        try {
+          result = await convertFile(file, "md", { ocr: { enabled: true, force: true } });
+          usedOcr = true;
+        } catch (ocrErr: any) {
+          if (isTesseractError(ocrErr)) {
+            result = await convertFile(file, "md");
+          } else {
+            throw ocrErr;
+          }
+        }
+      } else {
+        result = await convertFile(file, "md");
+      }
 
       // Auto-detect scanned PDFs and retry with OCR
-      if (!autoOcr && looksLikeScannedPdf(file, result.content)) {
-        result = await convertFile(file, "md", { ocr: { enabled: true, force: true } });
-        usedOcr = true;
+      if (!isImg && looksLikeScannedPdf(file, result.content)) {
+        try {
+          result = await convertFile(file, "md", { ocr: { enabled: true, force: true } });
+          usedOcr = true;
+        } catch (ocrErr: any) {
+          if (!isTesseractError(ocrErr)) throw ocrErr;
+          // Tesseract missing — keep non-OCR result silently
+        }
       }
 
       const outName = name.replace(/\.[^.]+$/, "") + ".md";
