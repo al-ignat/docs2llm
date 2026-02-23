@@ -91,9 +91,10 @@ export async function runPaste(options: PasteOptions): Promise<void> {
   const preview = lines.slice(0, 3).join("\n");
   const words = markdown.split(/\s+/).filter(Boolean).length;
   const chars = markdown.length;
-  p.log.info(
+  p.box(
     `${preview}${lines.length > 3 ? "\n…" : ""}\n` +
-    `${words} words · ${chars} chars`
+    `${words} words · ${chars} chars`,
+    "Converted"
   );
 
   // Interactive prompt
@@ -119,9 +120,9 @@ export async function runPaste(options: PasteOptions): Promise<void> {
   }
 
   // File
-  const filePath = guard(await p.text({
+  const filePath = guard(await p.path({
     message: "Output file:",
-    placeholder: "snippet.md",
+    directory: false,
     validate: (val) => {
       if (!val?.trim()) return "Path is required.";
     },
