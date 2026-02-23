@@ -586,11 +586,11 @@ async function convertBatchInteractive(dir: string, config?: Config) {
   bar.stop(`Converted ${ok} of ${files.length} files`);
 
   // Summary
-  const summary: string[] = [`${ok} converted`];
-  if (fail > 0) summary.push(`${fail} failed`);
-  if (ocr > 0) summary.push(`${ocr} with OCR`);
-  summary.push(`~${totalTokens.toLocaleString()} total tokens`);
-  p.log.info(summary.join(", "));
+  const summaryLines: string[] = [`${ok} converted`];
+  if (fail > 0) summaryLines.push(`${fail} failed`);
+  if (ocr > 0) summaryLines.push(`${ocr} with OCR`);
+  summaryLines.push(`~${totalTokens.toLocaleString()} total tokens`);
+  p.box(summaryLines.join("\n"), "Batch Summary");
 }
 
 async function postConversionMenu(
