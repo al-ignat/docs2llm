@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { convertFile, convertBytes, type OcrOptions } from "../core/convert";
+import { convertFile, convertBytes, isTesseractError, TESSERACT_INSTALL_HINT, type OcrOptions } from "../core/convert";
 import { fetchAndConvert } from "../commands/fetch";
 import { getTokenStats } from "../core/tokens";
 
@@ -44,8 +44,11 @@ export async function startMcpServer() {
           ],
         };
       } catch (err: any) {
+        const msg = isTesseractError(err)
+          ? `Error converting file: ${err.message ?? err}\n\n${TESSERACT_INSTALL_HINT}`
+          : `Error converting file: ${err.message ?? err}`;
         return {
-          content: [{ type: "text", text: `Error converting file: ${err.message ?? err}` }],
+          content: [{ type: "text", text: msg }],
           isError: true,
         };
       }

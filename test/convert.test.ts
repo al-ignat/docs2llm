@@ -4,6 +4,8 @@ import {
   looksLikeScannedPdf,
   isImageFile,
   isImageMime,
+  isTesseractError,
+  TESSERACT_INSTALL_HINT,
 } from "../src/core/convert";
 
 describe("looksLikeScannedPdf", () => {
@@ -67,6 +69,45 @@ describe("isImageMime", () => {
     expect(isImageMime("application/pdf")).toBe(false);
     expect(isImageMime("text/plain")).toBe(false);
     expect(isImageMime("image/svg+xml")).toBe(false);
+  });
+});
+
+describe("isTesseractError", () => {
+  test("detects TESSDATA_PREFIX errors", () => {
+    expect(isTesseractError(new Error("TESSDATA_PREFIX is not set"))).toBe(true);
+    expect(isTesseractError(new Error("Error: TESSDATA_PREFIX=/opt/homebrew/share/tessdata"))).toBe(true);
+  });
+
+  test("detects Tesseract loading errors", () => {
+    expect(isTesseractError(new Error("Failed to load Tesseract"))).toBe(true);
+    expect(isTesseractError(new Error("tesseract not found"))).toBe(true);
+  });
+
+  test("detects tessdata path errors", () => {
+    expect(isTesseractError(new Error("Cannot find tessdata directory"))).toBe(true);
+    expect(isTesseractError(new Error("/usr/share/tessdata/eng.traineddata not found"))).toBe(true);
+  });
+
+  test("returns false for unrelated errors", () => {
+    expect(isTesseractError(new Error("File not found"))).toBe(false);
+    expect(isTesseractError(new Error("Pandoc is not installed"))).toBe(false);
+    expect(isTesseractError(new Error("ENOENT"))).toBe(false);
+  });
+
+  test("handles non-Error objects", () => {
+    expect(isTesseractError("TESSDATA_PREFIX missing")).toBe(true);
+    expect(isTesseractError("some other string")).toBe(false);
+    expect(isTesseractError(null)).toBe(false);
+    expect(isTesseractError(undefined)).toBe(false);
+    expect(isTesseractError(0)).toBe(false);
+  });
+});
+
+describe("TESSERACT_INSTALL_HINT", () => {
+  test("contains install instructions for all platforms", () => {
+    expect(TESSERACT_INSTALL_HINT).toContain("brew install tesseract");
+    expect(TESSERACT_INSTALL_HINT).toContain("apt install tesseract-ocr");
+    expect(TESSERACT_INSTALL_HINT).toContain("choco install tesseract");
   });
 });
 

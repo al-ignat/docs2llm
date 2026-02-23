@@ -1,7 +1,7 @@
 import { resolve } from "path";
 import { existsSync } from "fs";
 import { createInterface } from "readline";
-import { convertFile, formatOutput, looksLikeScannedPdf, isImageFile, type OutputFormat, type OcrOptions } from "../core/convert";
+import { convertFile, formatOutput, looksLikeScannedPdf, isImageFile, isTesseractError, TESSERACT_INSTALL_HINT, type OutputFormat, type OcrOptions } from "../core/convert";
 import { writeOutput } from "../core/output";
 import { buildPlan, ValidationError } from "../core/validate";
 import { buildPandocArgs, type Config } from "../core/config";
@@ -118,21 +118,48 @@ export async function convertSingleFile(
       }
     } else {
       // Auto-enable OCR for images (no text layer to extract)
-      const effectiveOcr = (!ocr?.enabled && isImageFile(filePath))
-        ? { enabled: true, force: true }
-        : ocr;
-      if (effectiveOcr !== ocr && !useStdout) {
-        cliLog("⚠ Image detected. Running OCR…");
+      let effectiveOcr = ocr;
+      let autoOcrFailed = false;
+      if (!ocr?.enabled && isImageFile(filePath)) {
+        try {
+          effectiveOcr = { enabled: true, force: true };
+          if (!useStdout) cliLog("⚠ Image detected. Running OCR…");
+        } catch { /* effectiveOcr already set */ }
       }
 
-      let result = await convertFile(filePath, plan.format, { ocr: effectiveOcr });
+      let result: Awaited<ReturnType<typeof convertFile>>;
       let usedOcr = !!effectiveOcr?.enabled;
 
+      if (effectiveOcr !== ocr) {
+        try {
+          result = await convertFile(filePath, plan.format, { ocr: effectiveOcr });
+        } catch (ocrErr: any) {
+          if (isTesseractError(ocrErr)) {
+            cliWarn("⚠ OCR unavailable (Tesseract not installed). Converting without OCR…");
+            result = await convertFile(filePath, plan.format, { ocr: ocr });
+            usedOcr = false;
+            autoOcrFailed = true;
+          } else {
+            throw ocrErr;
+          }
+        }
+      } else {
+        result = await convertFile(filePath, plan.format, { ocr: effectiveOcr });
+      }
+
       // Auto-detect scanned PDFs
-      if (!effectiveOcr?.enabled && looksLikeScannedPdf(filePath, result.content)) {
-        if (!useStdout) cliLog("⚠ This looks like a scanned document. Retrying with OCR…");
-        result = await convertFile(filePath, plan.format, { ocr: { enabled: true, force: true } });
-        usedOcr = true;
+      if (!autoOcrFailed && !effectiveOcr?.enabled && looksLikeScannedPdf(filePath, result.content)) {
+        try {
+          if (!useStdout) cliLog("⚠ This looks like a scanned document. Retrying with OCR…");
+          result = await convertFile(filePath, plan.format, { ocr: { enabled: true, force: true } });
+          usedOcr = true;
+        } catch (ocrErr: any) {
+          if (isTesseractError(ocrErr)) {
+            cliWarn("⚠ OCR unavailable (Tesseract not installed). Keeping non-OCR result.");
+          } else {
+            throw ocrErr;
+          }
+        }
       }
 
       // --chunks mode: split and output as JSON
@@ -184,7 +211,9 @@ export async function convertSingleFile(
       process.exit(1);
     }
     cliError(`✗ ${filePath}: ${msg}`);
-    if (msg.includes("Pandoc")) {
+    if (isTesseractError(err)) {
+      cliError(`  ${TESSERACT_INSTALL_HINT.replace(/\n/g, "\n  ")}`);
+    } else if (msg.includes("Pandoc")) {
       cliError("  Tip: install Pandoc — brew install pandoc (macOS), sudo apt install pandoc (Ubuntu)");
       cliError("  Note: inbound conversion (documents → text) works without Pandoc.");
     }
@@ -309,15 +338,39 @@ export async function convertFolder(
           cliResult(`✓ ${file} → ${result.outputPath}`);
           if (jsonMode) jsonResults.push({ success: true, input: file, output: result.outputPath, format: plan.format, duration_ms: Math.round(performance.now() - ft0) });
         } else {
-          const batchOcr = (!ocr?.enabled && isImageFile(file))
-            ? { enabled: true, force: true }
-            : ocr;
-          let result = await convertFile(file, plan.format, { ocr: batchOcr });
+          const isImg = !ocr?.enabled && isImageFile(file);
+          const batchOcr = isImg ? { enabled: true, force: true } : ocr;
+          let result: Awaited<ReturnType<typeof convertFile>>;
           let usedOcr = !!batchOcr?.enabled;
-          if (!batchOcr?.enabled && looksLikeScannedPdf(file, result.content)) {
-            cliLog(`⚠ ${file}: scanned document detected, retrying with OCR…`);
-            result = await convertFile(file, plan.format, { ocr: { enabled: true, force: true } });
-            usedOcr = true;
+
+          if (isImg) {
+            try {
+              result = await convertFile(file, plan.format, { ocr: batchOcr });
+            } catch (ocrErr: any) {
+              if (isTesseractError(ocrErr)) {
+                cliWarn(`⚠ ${file}: OCR unavailable, converting without OCR`);
+                result = await convertFile(file, plan.format, { ocr: ocr });
+                usedOcr = false;
+              } else {
+                throw ocrErr;
+              }
+            }
+          } else {
+            result = await convertFile(file, plan.format, { ocr: batchOcr });
+          }
+
+          if (!usedOcr && !isImg && looksLikeScannedPdf(file, result.content)) {
+            try {
+              cliLog(`⚠ ${file}: scanned document detected, retrying with OCR…`);
+              result = await convertFile(file, plan.format, { ocr: { enabled: true, force: true } });
+              usedOcr = true;
+            } catch (ocrErr: any) {
+              if (isTesseractError(ocrErr)) {
+                cliWarn(`⚠ ${file}: OCR unavailable, keeping non-OCR result`);
+              } else {
+                throw ocrErr;
+              }
+            }
           }
           await writeOutput(plan.outputPath, result.formatted);
           const stats = getTokenStats(result.content);
@@ -464,6 +517,9 @@ export async function convertStdin(
     cliResult(`✓ stdin → ${outPath} (${formatTokenStats(stats)})`);
   } catch (err: any) {
     cliError(`✗ stdin: ${err.message ?? err}`);
+    if (isTesseractError(err)) {
+      cliError(`  ${TESSERACT_INSTALL_HINT.replace(/\n/g, "\n  ")}`);
+    }
     process.exit(1);
   }
 }
