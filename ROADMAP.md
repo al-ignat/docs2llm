@@ -21,8 +21,25 @@ Native desktop app wrapping the web UI. Thin Swift shell using `WKWebView` — n
 
 ## CLI Housekeeping
 
-- [ ] `cli.ts` is 927 lines — extract `convertSingleFile()`, `convertFolder()`, `convertUrl()`, `convertStdin()` into `src/commands/run.ts`, leaving `cli.ts` as arg parsing + dispatch only
-- [ ] CLAUDE.md architecture table lists 7 files, actual count is 21 — update to reflect `commands/`, `core/`, `server/`, `shared/` structure
+### Extract `cli.ts` → `cli.ts` + `run.ts`
+
+`cli.ts` is 927 lines doing two jobs: arg parsing and conversion orchestration. Split it:
+
+**`cli.ts` keeps (~280 lines):** `parseArgs()`, `printHelp()`, `printFormats()`, `main()` dispatch logic. Imports and calls `run.ts` functions.
+
+**`run.ts` gets (~600 lines):**
+- `confirm()` — readline overwrite prompt
+- `quietMode`, `jsonMode` flags + `cliLog()`, `cliWarn()`, `cliError()`, `cliResult()` helpers
+- `ConversionResult` interface
+- `convertSingleFile()` (lines 474-615)
+- `convertFolder()` (lines 617-772)
+- `convertUrl()` (lines 773-812)
+- `convertStdin()` (lines 814-888)
+- `detectMimeFromBytes()` (lines 890-927)
+
+**Export from `run.ts`:** `convertSingleFile`, `convertFolder`, `convertUrl`, `convertStdin`, `setOutputMode(quiet, json)` (replaces direct module-level flag mutation).
+
+**`main()` stays in `cli.ts`** — it calls `setOutputMode()` then dispatches to the right `run.ts` function. No behavior changes, pure extraction.
 
 ## Web UI Gaps
 
@@ -37,3 +54,4 @@ Native desktop app wrapping the web UI. Thin Swift shell using `WKWebView` — n
   - p.box() displays, config diff preview, improved error messages
   - `--yes`, `--json`, `--quiet` flags, non-TTY detection
 - [x] Web UI extraction — `api.ts` split into `api.ts` (461 lines) + `ui.ts`
+- [x] CLAUDE.md architecture table — updated to reflect all 21 source files
