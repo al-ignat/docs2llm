@@ -31,16 +31,18 @@ export async function runInit(isGlobal: boolean) {
     }));
 
     if (action === "add-template") {
+      const before = parseConfigFile(targetPath);
       const templates = await promptTemplateLoop(existing.templates);
       existing.templates = { ...existing.templates, ...templates };
-      await saveConfig(targetPath, existing);
+      await saveConfig(targetPath, existing, before);
       return;
     }
 
     if (action === "edit-defaults") {
+      const before = parseConfigFile(targetPath);
       const defaults = await promptDefaults(existing);
       existing.defaults = defaults.defaults;
-      await saveConfig(targetPath, existing);
+      await saveConfig(targetPath, existing, before);
       return;
     }
 
@@ -102,9 +104,10 @@ async function promptDefaults(existing?: Config): Promise<{
 
   let outputDir: string | undefined;
   if (outputDirChoice === "custom") {
-    const dir = guard(await p.text({
+    const dir = guard(await p.path({
       message: "Output directory path:",
-      placeholder: existing?.defaults?.outputDir ?? "./out",
+      directory: true,
+      initialValue: existing?.defaults?.outputDir,
     }));
     outputDir = dir;
   }
@@ -217,18 +220,18 @@ async function promptTemplateFeatures(format: OutputFormat): Promise<string[]> {
       } else if (feat === "standalone") {
         pandocArgs.push("--standalone");
       } else if (feat === "reference-doc") {
-        const refPath = guard(await p.text({
+        const refPath = guard(await p.path({
           message: "Path to reference document:",
-          placeholder: `./template.${format}`,
+          directory: false,
           validate: (val) => {
             if (!val?.trim()) return "Path is required.";
           },
         }));
         pandocArgs.push(`--reference-doc=${refPath.trim()}`);
       } else if (feat === "css") {
-        const cssPath = guard(await p.text({
+        const cssPath = guard(await p.path({
           message: "Path to CSS stylesheet:",
-          placeholder: "./style.css",
+          directory: false,
           validate: (val) => {
             if (!val?.trim()) return "Path is required.";
           },
@@ -246,8 +249,8 @@ async function promptTemplateFeatures(format: OutputFormat): Promise<string[]> {
 
   if (wantAdvanced) {
     const extra = guard(await p.text({
-      message: "Pandoc args (space-separated):",
-      placeholder: "--shift-heading-level-by=-1",
+      message: "Pandoc args (space-separated, use = for values):",
+      placeholder: "--toc-depth=2 --shift-heading-level-by=-1",
     }));
     const extraArgs = extra.trim().split(/\s+/).filter(Boolean);
     pandocArgs.push(...extraArgs);
@@ -256,9 +259,46 @@ async function promptTemplateFeatures(format: OutputFormat): Promise<string[]> {
   return pandocArgs;
 }
 
-async function saveConfig(targetPath: string, config: Config) {
+function describeChanges(before: Config, after: Config): string[] {
+  const changes: string[] = [];
+
+  const bf = before.defaults?.format;
+  const af = after.defaults?.format;
+  if (bf !== af) {
+    changes.push(bf ? `Format: ${bf} → ${af}` : `Format: ${af}`);
+  }
+
+  const bo = before.defaults?.outputDir;
+  const ao = after.defaults?.outputDir;
+  if (bo !== ao) {
+    if (ao && bo) changes.push(`Output dir: ${bo} → ${ao}`);
+    else if (ao) changes.push(`Output dir: ${ao}`);
+    else changes.push(`Output dir: removed`);
+  }
+
+  const beforeNames = new Set(Object.keys(before.templates ?? {}));
+  const afterNames = new Set(Object.keys(after.templates ?? {}));
+  for (const name of afterNames) {
+    if (!beforeNames.has(name)) changes.push(`Template added: ${name}`);
+  }
+  for (const name of beforeNames) {
+    if (!afterNames.has(name)) changes.push(`Template removed: ${name}`);
+  }
+
+  return changes;
+}
+
+async function saveConfig(targetPath: string, config: Config, before?: Config) {
   const yaml = serializeConfig(config);
-  p.log.info(`Config to write to ${targetPath}:\n${yaml}`);
+
+  if (before) {
+    const changes = describeChanges(before, config);
+    if (changes.length > 0) {
+      p.box(changes.join("\n"), "Changes");
+    }
+  } else {
+    p.box(yaml, targetPath);
+  }
 
   const dir = dirname(targetPath);
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true });

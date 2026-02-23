@@ -89,7 +89,7 @@ export async function runConfigWizard() {
       summary.push(`  ${name}${desc} (${tpl.format})`);
     }
   }
-  p.log.info(summary.join("\n"));
+  p.box(summary.join("\n"), "Active Config");
 
   // Ask which config to edit
   const targetPath = await pickConfigTarget();
@@ -119,16 +119,18 @@ export async function runConfigWizard() {
   }
 
   if (action === "add-template") {
+    const before = parseConfigFile(targetPath);
     const templates = await promptTemplateLoop(existing.templates);
     existing.templates = { ...existing.templates, ...templates };
-    await saveConfig(targetPath, existing);
+    await saveConfig(targetPath, existing, before);
     return;
   }
 
   if (action === "edit-defaults") {
+    const before = parseConfigFile(targetPath);
     const defaults = await promptDefaults(existing);
     existing.defaults = defaults.defaults;
-    await saveConfig(targetPath, existing);
+    await saveConfig(targetPath, existing, before);
     return;
   }
 }
