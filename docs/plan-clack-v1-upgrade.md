@@ -1,5 +1,7 @@
-# Implementation Plan: Upgrade to @clack/prompts v1.0
+# Implementation Plan: Upgrade to @clack/prompts v1.0 — COMPLETE
 
+> **Status: Complete.** All phases implemented across PRs #26-35.
+>
 > Detailed step-by-step plan for upgrading docs2llm from `@clack/prompts ^0.10` to `v1.0`, addressing UX best practices identified in the [Terminal Wizard UI Research](./research-terminal-wizard-ui.md).
 
 ---
@@ -557,29 +559,18 @@ The config wizard is more dynamic (menu-driven), so the step tracker is optional
 
 ---
 
-## Recommended Implementation Order
+## Implementation History
 
-Each phase can be merged independently. The recommended order maximizes value delivered per phase:
-
-```
-Phase 1 (Upgrade)           ← Do first, unblocks everything
-  ↓
-Phase 2 (File selection)    ← Highest user-facing impact
-  ↓
-Phase 3 (Progress & output) ← Second-highest impact, especially batch
-  ↓
-Phase 7 (Non-interactive)   ← Unblocks CI/CD and scripting users
-  ↓
-Phase 4 (Flow improvements) ← Polish & consistency
-  ↓
-Phase 5 (Init & config)     ← Targets setup experience
-  ↓
-Phase 6 (Paste)             ← Smallest scope
-  ↓
-Phase 8 (Step tracker)      ← Visual polish, can be done anytime after Phase 1
-```
-
-**Estimated scope:** Phases 1-3 deliver ~80% of the value. Phases 4-8 are incremental polish that can be deferred based on priority.
+| Phase | PR | Description |
+|-------|----|-------------|
+| 1 — Dependency Upgrade | #26 | Bumped `@clack/prompts` to `^1.0`, added `guard()` helper, step tracker |
+| 2 — File Selection | #30 | `p.autocomplete()` file picker, `p.path()` for manual entry, selectable groups |
+| 3 — Progress & Output | #31 | `p.progress()` for batch, improved error UX |
+| 4 — Flow Improvements | #32 | Step tracker, paste preview, improved error messages |
+| 5 — Init & Config | #33 | `p.path()` for file/dir inputs, `p.box()` for config display, config diff preview |
+| 6 — Paste Cleanup | #34 | `p.path()` for file save, `p.box()` for preview |
+| 7 — Non-Interactive | #35 | `--yes`, `--json`, `--quiet` flags, non-TTY detection |
+| 8 — Step Tracker | #26, #32 | Folded into Phases 1 and 4 |
 
 ---
 
