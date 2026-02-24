@@ -187,6 +187,33 @@ Opens in your browser (port 3000, or next available). Features:
 - Copy to clipboard, download `.md`, token count and LLM fit indicator
 - Dark theme
 
+### Raycast Extension
+
+Use docs2llm from [Raycast](https://raycast.com) with keyboard shortcuts — no terminal needed.
+
+**Smart commands** auto-detect your context (Finder selection, text selection, or clipboard) and conversion direction:
+
+| Command | What it does |
+|---------|-------------|
+| **Smart Copy** | Detect source → convert → copy to clipboard |
+| **Smart Paste** | Convert clipboard → paste into active app (or save to Finder folder) |
+| **Smart Save** | Detect source → convert → save to output directory |
+
+**Direct commands** for specific workflows:
+
+| Command | What it does |
+|---------|-------------|
+| Convert File | Pick a file and convert to Markdown/JSON/YAML |
+| Convert URL | Fetch a URL and convert to Markdown |
+| Convert Clipboard | Convert clipboard contents to Markdown |
+| Quick Convert | Convert selected Finder file → clipboard |
+| Export Markdown | Convert .md to Word/PowerPoint/HTML via Pandoc |
+| Markdown to Rich Text | Clipboard Markdown → rich HTML for pasting |
+| Copy as Rich Text | Selected Finder .md → rich HTML on clipboard |
+| Save Clipboard | Detect clipboard content → save as converted file |
+
+Install from the `raycast/` directory in this repo. Requires docs2llm (via Bun or compiled binary) and optionally Pandoc for outbound conversion.
+
 ### MCP Server (Claude Desktop / Cursor)
 
 Expose docs2llm as an MCP tool server so LLMs can convert documents directly:
