@@ -46,6 +46,7 @@ export default async function Command() {
 
   await Clipboard.copy(result.content);
 
-  const words = result.content.split(/\s+/).length;
-  await showHUD(`Copied ${words} words from ${fileName}`);
+  await showHUD(
+    `Copied ${result.words} words (~${result.tokens} tokens) from ${fileName}`,
+  );
 }

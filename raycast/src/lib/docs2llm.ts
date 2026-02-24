@@ -1,8 +1,8 @@
 import { execFile, execFileSync } from "node:child_process";
-import { existsSync, readlinkSync, realpathSync } from "node:fs";
+import { existsSync, readlinkSync, realpathSync, writeFileSync } from "node:fs";
 import { environment, getPreferenceValues } from "@raycast/api";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 
 const TIMEOUT_MS = 30_000;
 
@@ -29,11 +29,14 @@ interface Preferences {
   defaultFormat: string;
   binaryPath: string;
   enableOcr: boolean;
+  outputDir: string;
 }
 
 export interface ConvertResult {
   content: string;
   error?: string;
+  words: number;
+  tokens: number;
 }
 
 /**
@@ -144,11 +147,19 @@ export function resolveInvocation(): Invocation | null {
   return null;
 }
 
+function computeStats(content: string): { words: number; tokens: number } {
+  const words = content.split(/\s+/).filter(Boolean).length;
+  const tokens = Math.ceil(words * 1.33);
+  return { words, tokens };
+}
+
 function run(args: string[]): Promise<ConvertResult> {
   const invocation = resolveInvocation();
   if (!invocation) {
     return Promise.resolve({
       content: "",
+      words: 0,
+      tokens: 0,
       error:
         "docs2llm not found. Install it or set the binary path in extension preferences.",
     });
@@ -164,9 +175,10 @@ function run(args: string[]): Promise<ConvertResult> {
       (err, stdout, stderr) => {
         if (err) {
           const msg = stderr?.trim() || err.message;
-          resolve({ content: "", error: msg });
+          resolve({ content: "", words: 0, tokens: 0, error: msg });
         } else {
-          resolve({ content: stdout });
+          const stats = computeStats(stdout);
+          resolve({ content: stdout, ...stats });
         }
       },
     );
@@ -205,4 +217,61 @@ export async function getVersion(): Promise<string | null> {
 
 export function isInstalled(): boolean {
   return resolveInvocation() !== null;
+}
+
+/** Returns the user-configured output directory, falling back to ~/Downloads. */
+export function getOutputDir(): string {
+  const prefs = getPrefs();
+  const dir = prefs.outputDir?.trim();
+  if (dir && existsSync(dir)) return dir;
+  return join(HOME, "Downloads");
+}
+
+/** Save text content to a file in the output directory. Returns the full path. */
+export function saveToFile(content: string, filename: string): string {
+  const outDir = getOutputDir();
+  const outPath = join(outDir, filename);
+  writeFileSync(outPath, content, "utf-8");
+  return outPath;
+}
+
+/** Export a Markdown file to docx/pptx/html via Pandoc (outbound conversion). */
+export async function exportMarkdown(
+  mdPath: string,
+  format: string,
+): Promise<{ outputPath?: string; error?: string }> {
+  const outDir = getOutputDir();
+  const stem = basename(mdPath, ".md");
+  const outputPath = join(outDir, `${stem}.${format}`);
+
+  const result = await run([
+    mdPath,
+    "-f",
+    format,
+    "-o",
+    outDir,
+    "--yes",
+    "--json",
+  ]);
+
+  if (result.error) {
+    return { error: result.error };
+  }
+
+  // The CLI with --json outputs JSON with an outputPath field
+  try {
+    const parsed = JSON.parse(result.content);
+    if (parsed.outputPath && existsSync(parsed.outputPath)) {
+      return { outputPath: parsed.outputPath };
+    }
+  } catch {
+    // --json not supported or different output; fall through
+  }
+
+  // Fallback: check if the expected output file was created
+  if (existsSync(outputPath)) {
+    return { outputPath };
+  }
+
+  return { error: "Conversion completed but output file was not found." };
 }
