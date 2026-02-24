@@ -19,34 +19,14 @@ import {
   isInstalled,
   loadTemplates,
 } from "./lib/docs2llm";
+import {
+  type Direction,
+  detectDirection,
+  formatTitle,
+  INBOUND_FORMATS,
+  OUTBOUND_FORMATS,
+} from "./lib/format-utils";
 import { ResultView } from "./lib/result-view";
-
-type Direction = "inbound" | "outbound";
-
-function detectDirection(filePath: string): Direction {
-  return filePath.endsWith(".md") || filePath.endsWith(".markdown")
-    ? "outbound"
-    : "inbound";
-}
-
-function formatTitle(f: string): string {
-  switch (f) {
-    case "md":
-      return "Markdown";
-    case "json":
-      return "JSON";
-    case "yaml":
-      return "YAML";
-    case "docx":
-      return "Word (.docx)";
-    case "pptx":
-      return "PowerPoint (.pptx)";
-    case "html":
-      return "HTML (.html)";
-    default:
-      return f;
-  }
-}
 
 export default function Command() {
   const { push } = useNavigation();
@@ -200,9 +180,7 @@ export default function Command() {
       ? prefs.defaultTemplate
       : "__none__";
 
-  const inboundFormats = ["md", "json", "yaml"];
-  const outboundFormats = ["docx", "pptx", "html"];
-  const formats = direction === "inbound" ? inboundFormats : outboundFormats;
+  const formats = direction === "inbound" ? INBOUND_FORMATS : OUTBOUND_FORMATS;
 
   return (
     <Form
