@@ -30,18 +30,29 @@ export default async function Command() {
     return;
   }
 
-  const direction = source.direction;
-  const outDir = getOutputDir();
   const prefs = getPreferenceValues<{
-    defaultFormat?: string;
-    defaultExportFormat?: string;
+    defaultFormat: string;
+    defaultExportFormat: string;
+    enableOcr: boolean;
   }>();
+  const fmt = prefs.defaultFormat || "md";
+  const exportFmt = prefs.defaultExportFormat || "docx";
+  const ocr = prefs.enableOcr ?? false;
+
+  let outDir: string;
+  try {
+    outDir = getOutputDir();
+  } catch (err) {
+    await showHUD(String(err instanceof Error ? err.message : err));
+    return;
+  }
+
+  const direction = source.direction;
 
   if (direction === "outbound") {
-    await saveOutbound(source, outDir, prefs.defaultExportFormat || "docx");
+    await saveOutbound(source, outDir, exportFmt);
   } else {
-    const fmt = prefs.defaultFormat || "md";
-    await saveInbound(source, fmt, outDir);
+    await saveInbound(source, fmt, outDir, ocr);
   }
 }
 
@@ -65,7 +76,12 @@ export function generateFilename(source: SmartSource, ext: string): string {
   return `converted-${Date.now()}.${ext}`;
 }
 
-async function saveInbound(source: SmartSource, fmt: string, outDir: string) {
+async function saveInbound(
+  source: SmartSource,
+  fmt: string,
+  outDir: string,
+  ocr: boolean,
+) {
   let content: string | undefined;
   const filename = generateFilename(source, fmt);
   const outPath = join(outDir, filename);
@@ -75,7 +91,7 @@ async function saveInbound(source: SmartSource, fmt: string, outDir: string) {
       style: Toast.Style.Animated,
       title: `Converting ${basename(source.path)}...`,
     });
-    const result = await convertFile(source.path, fmt);
+    const result = await convertFile(source.path, fmt, ocr);
     if (result.error) {
       await showToast(failToast(result.error));
       return;
@@ -90,7 +106,7 @@ async function saveInbound(source: SmartSource, fmt: string, outDir: string) {
           style: Toast.Style.Animated,
           title: "Converting HTML...",
         });
-        const result = await convertFile(tmpPath, fmt);
+        const result = await convertFile(tmpPath, fmt, ocr);
         if (result.error) {
           await showToast(failToast(result.error));
           return;
@@ -124,7 +140,7 @@ async function saveInbound(source: SmartSource, fmt: string, outDir: string) {
         style: Toast.Style.Animated,
         title: `Converting ${basename(clip.path)}...`,
       });
-      const result = await convertFile(clip.path, fmt);
+      const result = await convertFile(clip.path, fmt, ocr);
       if (result.error) {
         await showToast(failToast(result.error));
         return;
@@ -138,7 +154,7 @@ async function saveInbound(source: SmartSource, fmt: string, outDir: string) {
           style: Toast.Style.Animated,
           title: "Converting HTML...",
         });
-        const result = await convertFile(tmpPath, fmt);
+        const result = await convertFile(tmpPath, fmt, ocr);
         if (result.error) {
           await showToast(failToast(result.error));
           return;

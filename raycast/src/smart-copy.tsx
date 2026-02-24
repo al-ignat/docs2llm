@@ -1,4 +1,10 @@
-import { Clipboard, showHUD, showToast, Toast } from "@raycast/api";
+import {
+  Clipboard,
+  getPreferenceValues,
+  showHUD,
+  showToast,
+  Toast,
+} from "@raycast/api";
 import { readFileSync, writeFileSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
@@ -16,6 +22,14 @@ export default async function Command() {
     await showHUD("docs2llm not found — set binary path in preferences");
     return;
   }
+
+  const prefs = getPreferenceValues<{
+    defaultFormat: string;
+    defaultExportFormat: string;
+    enableOcr: boolean;
+  }>();
+  const fmt = prefs.defaultFormat || "md";
+  const ocr = prefs.enableOcr ?? false;
 
   const source = await detectSource();
 
@@ -47,8 +61,8 @@ export default async function Command() {
       await Clipboard.copy({ html: result.html, text: mdText });
       await showHUD(`Copied ${fileName} as rich text`);
     } else {
-      // Other file → Markdown on clipboard
-      const result = await convertFile(source.path);
+      // Other file → LLM format on clipboard
+      const result = await convertFile(source.path, fmt, ocr);
       if (result.error) {
         await showToast(failToast(result.error));
         return;
@@ -72,13 +86,13 @@ export default async function Command() {
           style: Toast.Style.Animated,
           title: "Converting HTML...",
         });
-        const result = await convertFile(tmpPath, "md");
+        const result = await convertFile(tmpPath, fmt, ocr);
         if (result.error) {
           await showToast(failToast(result.error));
           return;
         }
         await Clipboard.copy(result.content);
-        await showHUD("Converted selection to Markdown");
+        await showHUD(`Converted selection to ${fmt.toUpperCase()}`);
       } finally {
         try {
           unlinkSync(tmpPath);
@@ -133,13 +147,13 @@ export default async function Command() {
             style: Toast.Style.Animated,
             title: "Converting HTML...",
           });
-          const result = await convertFile(tmpPath, "md");
+          const result = await convertFile(tmpPath, fmt, ocr);
           if (result.error) {
             await showToast(failToast(result.error));
             return;
           }
           await Clipboard.copy(result.content);
-          await showHUD("Converted HTML to Markdown");
+          await showHUD(`Converted HTML to ${fmt.toUpperCase()}`);
         } finally {
           try {
             unlinkSync(tmpPath);
@@ -155,7 +169,7 @@ export default async function Command() {
           style: Toast.Style.Animated,
           title: "Fetching URL...",
         });
-        const result = await convertUrl(clip.url);
+        const result = await convertUrl(clip.url, fmt);
         if (result.error) {
           await showToast(failToast(result.error));
           return;
@@ -167,7 +181,7 @@ export default async function Command() {
         } catch {
           host = "URL";
         }
-        await showHUD(`Converted ${host} to Markdown`);
+        await showHUD(`Converted ${host} to ${fmt.toUpperCase()}`);
         return;
       }
 
@@ -177,7 +191,7 @@ export default async function Command() {
           style: Toast.Style.Animated,
           title: `Converting ${fileName}...`,
         });
-        const result = await convertFile(clip.path);
+        const result = await convertFile(clip.path, fmt, ocr);
         if (result.error) {
           await showToast(failToast(result.error));
           return;

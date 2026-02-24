@@ -33,10 +33,11 @@ const BUN_PATHS = [
 const BUN_GLOBAL_LINK = join(HOME, ".bun/bin/docs2llm");
 
 interface Preferences {
-  defaultFormat: string;
   binaryPath: string;
+  pandocPath: string;
   enableOcr: boolean;
   outputDir: string;
+  defaultTemplate: string;
 }
 
 export interface ConvertResult {
@@ -175,12 +176,19 @@ function run(args: string[]): Promise<ConvertResult> {
   const fullArgs = [...invocation.prefix, ...args];
 
   // Expand PATH so child process can find Pandoc and other tools
-  const expandedPath = [
+  const prefs = getPrefs();
+  const pathSegments = [
     process.env.PATH || "",
     "/usr/local/bin",
     "/opt/homebrew/bin",
     join(HOME, ".local/bin"),
-  ].join(":");
+  ];
+  // Prepend custom Pandoc directory if configured
+  if (prefs.pandocPath?.trim()) {
+    const pandocDir = dirname(prefs.pandocPath.trim());
+    pathSegments.unshift(pandocDir);
+  }
+  const expandedPath = pathSegments.join(":");
 
   return new Promise((resolve) => {
     execFile(
@@ -210,7 +218,7 @@ export async function convertFile(
   ocr?: boolean,
 ): Promise<ConvertResult> {
   const prefs = getPrefs();
-  const fmt = format || prefs.defaultFormat || "md";
+  const fmt = format || "md";
   const useOcr = ocr ?? prefs.enableOcr;
 
   const args = [filePath, "--stdout", "-f", fmt, "--yes"];
@@ -222,9 +230,7 @@ export async function convertUrl(
   url: string,
   format?: string,
 ): Promise<ConvertResult> {
-  const prefs = getPrefs();
-  const fmt = format || prefs.defaultFormat || "md";
-
+  const fmt = format || "md";
   return run([url, "--stdout", "-f", fmt, "--yes"]);
 }
 
@@ -238,12 +244,14 @@ export function isInstalled(): boolean {
   return resolveInvocation() !== null;
 }
 
-/** Returns the user-configured output directory, falling back to ~/Downloads. */
+/** Returns the user-configured output directory. Throws if unset. */
 export function getOutputDir(): string {
   const prefs = getPrefs();
   const dir = prefs.outputDir?.trim();
   if (dir && existsSync(dir)) return dir;
-  return join(HOME, "Downloads");
+  throw new Error(
+    "Output directory not configured. Set it in Docs2llm extension preferences.",
+  );
 }
 
 /** Save text content to a file in the output directory. Returns the full path. */

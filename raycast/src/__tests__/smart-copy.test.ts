@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   showHUD: vi.fn(),
   showToast: vi.fn(),
   clipboardCopy: vi.fn(),
+  getPreferenceValues: vi.fn(() => ({})),
   isInstalled: vi.fn(),
   convertFile: vi.fn(),
   convertUrl: vi.fn(),
@@ -19,6 +20,7 @@ vi.mock("@raycast/api", () => ({
   Clipboard: { copy: mocks.clipboardCopy },
   showHUD: mocks.showHUD,
   showToast: mocks.showToast,
+  getPreferenceValues: mocks.getPreferenceValues,
   Toast: {
     Style: { Animated: "animated", Failure: "failure", Success: "success" },
   },
@@ -50,6 +52,11 @@ describe("Smart Copy", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.isInstalled.mockReturnValue(true);
+    mocks.getPreferenceValues.mockReturnValue({
+      defaultFormat: "md",
+      defaultExportFormat: "docx",
+      enableOcr: false,
+    });
   });
 
   // ---------------------------------------------------------------------------
@@ -89,7 +96,7 @@ describe("Smart Copy", () => {
 
       await Command();
 
-      expect(mocks.convertFile).toHaveBeenCalledWith("/tmp/report.pdf");
+      expect(mocks.convertFile).toHaveBeenCalledWith("/tmp/report.pdf", "md", false);
       expect(mocks.clipboardCopy).toHaveBeenCalledWith("# Report");
       expect(mocks.showHUD).toHaveBeenCalledWith(
         "Copied 1 words (~2 tokens) from report.pdf",
@@ -181,10 +188,11 @@ describe("Smart Copy", () => {
       expect(mocks.convertFile).toHaveBeenCalledWith(
         expect.stringContaining("docs2llm-smart-"),
         "md",
+        false,
       );
       expect(mocks.clipboardCopy).toHaveBeenCalledWith("Hello");
       expect(mocks.showHUD).toHaveBeenCalledWith(
-        "Converted selection to Markdown",
+        "Converted selection to MD",
       );
     });
 
@@ -240,7 +248,7 @@ describe("Smart Copy", () => {
       await Command();
 
       expect(mocks.clipboardCopy).toHaveBeenCalledWith("# Title");
-      expect(mocks.showHUD).toHaveBeenCalledWith("Converted HTML to Markdown");
+      expect(mocks.showHUD).toHaveBeenCalledWith("Converted HTML to MD");
     });
 
     it("URL → fetches and converts", async () => {
@@ -257,10 +265,10 @@ describe("Smart Copy", () => {
 
       await Command();
 
-      expect(mocks.convertUrl).toHaveBeenCalledWith("https://example.com/page");
+      expect(mocks.convertUrl).toHaveBeenCalledWith("https://example.com/page", "md");
       expect(mocks.clipboardCopy).toHaveBeenCalledWith("# Page");
       expect(mocks.showHUD).toHaveBeenCalledWith(
-        "Converted example.com to Markdown",
+        "Converted example.com to MD",
       );
     });
 
@@ -278,7 +286,7 @@ describe("Smart Copy", () => {
 
       await Command();
 
-      expect(mocks.convertFile).toHaveBeenCalledWith("/tmp/doc.docx");
+      expect(mocks.convertFile).toHaveBeenCalledWith("/tmp/doc.docx", "md", false);
       expect(mocks.clipboardCopy).toHaveBeenCalledWith("Content");
     });
 
