@@ -7,15 +7,24 @@ import {
   Toast,
 } from "@raycast/api";
 import { useState } from "react";
-import { exportMarkdown, isInstalled } from "./lib/docs2llm";
+import {
+  convertWithTemplate,
+  exportMarkdown,
+  getOutputDir,
+  isInstalled,
+  loadTemplates,
+} from "./lib/docs2llm";
 
 interface FormValues {
   file: string[];
   format: string;
+  template: string;
+  outputDir: string;
 }
 
 export default function Command() {
   const [isLoading, setIsLoading] = useState(false);
+  const templates = loadTemplates();
 
   if (!isInstalled()) {
     return (
@@ -38,12 +47,23 @@ export default function Command() {
     const fileName = filePath.split("/").pop() || "file";
 
     setIsLoading(true);
-    await showToast({
-      style: Toast.Style.Animated,
-      title: `Exporting ${fileName} as ${values.format.toUpperCase()}...`,
-    });
 
-    const result = await exportMarkdown(filePath, values.format);
+    let result: { outputPath?: string; error?: string };
+
+    if (values.template && values.template !== "__none__") {
+      await showToast({
+        style: Toast.Style.Animated,
+        title: `Exporting ${fileName} with template "${values.template}"...`,
+      });
+      result = await convertWithTemplate(filePath, values.template);
+    } else {
+      await showToast({
+        style: Toast.Style.Animated,
+        title: `Exporting ${fileName} as ${values.format.toUpperCase()}...`,
+      });
+      result = await exportMarkdown(filePath, values.format);
+    }
+
     setIsLoading(false);
 
     if (result.error) {
@@ -93,6 +113,24 @@ export default function Command() {
         <Form.Dropdown.Item value="pptx" title="PowerPoint (.pptx)" />
         <Form.Dropdown.Item value="html" title="HTML (.html)" />
       </Form.Dropdown>
+      {templates.length > 0 && (
+        <Form.Dropdown id="template" title="Template" defaultValue="__none__">
+          <Form.Dropdown.Item value="__none__" title="(None)" />
+          {templates.map((t) => (
+            <Form.Dropdown.Item
+              key={t.name}
+              value={t.name}
+              title={t.description ? `${t.name} — ${t.description}` : t.name}
+            />
+          ))}
+        </Form.Dropdown>
+      )}
+      <Form.TextField
+        id="outputDir"
+        title="Output Directory"
+        defaultValue={getOutputDir()}
+        info="Where to save the exported file"
+      />
     </Form>
   );
 }

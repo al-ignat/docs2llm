@@ -1,7 +1,7 @@
 {
   "name": "docs2llm",
   "title": "Docs2llm",
-  "description": "Convert documents to LLM-friendly formats. PDF, DOCX, images, URLs — to Markdown, JSON, or YAML.",
+  "description": "Convert documents to and from LLM-friendly formats. PDF, DOCX, images, URLs — to Markdown, JSON, YAML. Export Markdown to Word, PowerPoint, HTML. Rich text clipboard support.",
   "icon": "command-icon.png",
   "author": "ignataleinikov",
   "categories": ["Developer Tools", "Productivity"],
@@ -41,6 +41,27 @@
       "subtitle": "docs2llm",
       "description": "Convert Markdown to Word, PowerPoint, or HTML via Pandoc",
       "mode": "view"
+    },
+    {
+      "name": "markdown-to-rich-text",
+      "title": "Markdown to Rich Text",
+      "subtitle": "docs2llm",
+      "description": "Convert clipboard Markdown to rich HTML — paste formatted text into any app",
+      "mode": "no-view"
+    },
+    {
+      "name": "save-clipboard",
+      "title": "Save Clipboard",
+      "subtitle": "docs2llm",
+      "description": "Detect clipboard content and save as a converted file",
+      "mode": "view"
+    },
+    {
+      "name": "copy-as-rich-text",
+      "title": "Copy as Rich Text",
+      "subtitle": "docs2llm",
+      "description": "Convert selected Finder .md file to rich HTML on clipboard",
+      "mode": "no-view"
     }
   ],
   "preferences": [

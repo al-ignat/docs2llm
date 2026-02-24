@@ -1,7 +1,14 @@
 import { execFile, execFileSync } from "node:child_process";
-import { existsSync, readlinkSync, realpathSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  readFileSync,
+  readlinkSync,
+  realpathSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { environment, getPreferenceValues } from "@raycast/api";
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 
 const TIMEOUT_MS = 30_000;
@@ -271,6 +278,216 @@ export async function exportMarkdown(
   // Fallback: check if the expected output file was created
   if (existsSync(outputPath)) {
     return { outputPath };
+  }
+
+  return { error: "Conversion completed but output file was not found." };
+}
+
+/**
+ * Export a Markdown file to HTML, returning the HTML string.
+ * Used by outbound-to-clipboard flows (Markdown to Rich Text, Copy as Rich Text).
+ */
+export async function exportToHtml(
+  mdPath: string,
+): Promise<{ html?: string; error?: string }> {
+  const tmpOut = join(tmpdir(), `docs2llm-html-${Date.now()}`);
+
+  const result = await run([
+    mdPath,
+    "-f",
+    "html",
+    "-o",
+    tmpOut,
+    "--yes",
+    "--json",
+  ]);
+
+  if (result.error) {
+    return { error: result.error };
+  }
+
+  // Find the output HTML file
+  let htmlPath: string | undefined;
+
+  try {
+    const parsed = JSON.parse(result.content);
+    if (parsed.outputPath && existsSync(parsed.outputPath)) {
+      htmlPath = parsed.outputPath;
+    }
+  } catch {
+    // fall through
+  }
+
+  if (!htmlPath) {
+    const stem = basename(mdPath, ".md");
+    const candidate = join(tmpOut, `${stem}.html`);
+    if (existsSync(candidate)) {
+      htmlPath = candidate;
+    }
+  }
+
+  if (!htmlPath) {
+    return { error: "HTML export completed but output file was not found." };
+  }
+
+  try {
+    const html = readFileSync(htmlPath, "utf-8");
+    return { html };
+  } finally {
+    try {
+      unlinkSync(htmlPath);
+    } catch {
+      // ignore cleanup
+    }
+  }
+}
+
+/**
+ * Convert Markdown text (from clipboard) to HTML string.
+ * Writes a temp .md file, exports to HTML, cleans up.
+ */
+export async function convertToHtmlFromText(
+  mdContent: string,
+): Promise<{ html?: string; error?: string }> {
+  const tmpMd = join(tmpdir(), `docs2llm-md-${Date.now()}.md`);
+
+  try {
+    writeFileSync(tmpMd, mdContent, "utf-8");
+    return await exportToHtml(tmpMd);
+  } finally {
+    try {
+      unlinkSync(tmpMd);
+    } catch {
+      // ignore cleanup
+    }
+  }
+}
+
+/**
+ * Load templates from ~/.config/docs2llm/config.yaml.
+ * Returns an empty array if no config or no templates section.
+ */
+export function loadTemplates(): {
+  name: string;
+  format: string;
+  description?: string;
+}[] {
+  const configPath = join(HOME, ".config/docs2llm/config.yaml");
+  if (!existsSync(configPath)) return [];
+
+  try {
+    const content = readFileSync(configPath, "utf-8");
+    const templates: { name: string; format: string; description?: string }[] =
+      [];
+
+    // Simple YAML parser for templates section — avoids adding js-yaml dependency.
+    // Expects format:
+    //   templates:
+    //     name1:
+    //       format: docx
+    //       description: optional text
+    //     name2:
+    //       format: pptx
+    const lines = content.split("\n");
+    let inTemplates = false;
+    let currentName: string | null = null;
+    let currentFormat = "";
+    let currentDesc: string | undefined;
+
+    for (const line of lines) {
+      // Top-level "templates:" key
+      if (/^templates:\s*$/.test(line)) {
+        inTemplates = true;
+        continue;
+      }
+
+      if (!inTemplates) continue;
+
+      // Another top-level key → stop
+      if (/^\S/.test(line) && !line.startsWith(" ") && !line.startsWith("\t")) {
+        // Flush last template
+        if (currentName && currentFormat) {
+          templates.push({
+            name: currentName,
+            format: currentFormat,
+            description: currentDesc,
+          });
+        }
+        break;
+      }
+
+      // Template name (2-space indent)
+      const nameMatch = line.match(/^ {2}(\w[\w-]*):\s*$/);
+      if (nameMatch) {
+        // Flush previous
+        if (currentName && currentFormat) {
+          templates.push({
+            name: currentName,
+            format: currentFormat,
+            description: currentDesc,
+          });
+        }
+        currentName = nameMatch[1];
+        currentFormat = "";
+        currentDesc = undefined;
+        continue;
+      }
+
+      // Template fields (4-space indent)
+      const fieldMatch = line.match(/^ {4}(\w+):\s*(.+)$/);
+      if (fieldMatch && currentName) {
+        const [, key, value] = fieldMatch;
+        if (key === "format") currentFormat = value.trim();
+        if (key === "description") currentDesc = value.trim();
+      }
+    }
+
+    // Flush last
+    if (currentName && currentFormat) {
+      templates.push({
+        name: currentName,
+        format: currentFormat,
+        description: currentDesc,
+      });
+    }
+
+    return templates;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Run CLI with a named template (-t flag).
+ * The CLI resolves Pandoc args from config internally.
+ */
+export async function convertWithTemplate(
+  filePath: string,
+  template: string,
+): Promise<{ outputPath?: string; error?: string }> {
+  const outDir = getOutputDir();
+
+  const result = await run([
+    filePath,
+    "-t",
+    template,
+    "-o",
+    outDir,
+    "--yes",
+    "--json",
+  ]);
+
+  if (result.error) {
+    return { error: result.error };
+  }
+
+  try {
+    const parsed = JSON.parse(result.content);
+    if (parsed.outputPath && existsSync(parsed.outputPath)) {
+      return { outputPath: parsed.outputPath };
+    }
+  } catch {
+    // fall through
   }
 
   return { error: "Conversion completed but output file was not found." };

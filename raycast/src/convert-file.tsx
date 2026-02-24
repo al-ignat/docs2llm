@@ -9,13 +9,14 @@ import {
   useNavigation,
 } from "@raycast/api";
 import { useState } from "react";
-import { convertFile, isInstalled } from "./lib/docs2llm";
+import { convertFile, isInstalled, loadTemplates } from "./lib/docs2llm";
 import { ResultView } from "./lib/result-view";
 
 interface FormValues {
   file: string[];
   format: string;
   ocr: boolean;
+  template: string;
 }
 
 export default function Command() {
@@ -25,6 +26,7 @@ export default function Command() {
     enableOcr: boolean;
   }>();
   const [isLoading, setIsLoading] = useState(false);
+  const templates = loadTemplates();
 
   if (!isInstalled()) {
     return (
@@ -112,6 +114,18 @@ You can also set a custom binary path in the extension preferences.`}
         label="Enable OCR"
         defaultValue={prefs.enableOcr ?? false}
       />
+      {templates.length > 0 && (
+        <Form.Dropdown id="template" title="Template" defaultValue="__none__">
+          <Form.Dropdown.Item value="__none__" title="(None)" />
+          {templates.map((t) => (
+            <Form.Dropdown.Item
+              key={t.name}
+              value={t.name}
+              title={t.description ? `${t.name} — ${t.description}` : t.name}
+            />
+          ))}
+        </Form.Dropdown>
+      )}
     </Form>
   );
 }
