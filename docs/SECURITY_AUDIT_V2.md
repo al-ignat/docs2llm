@@ -1,23 +1,23 @@
 # docs2llm — Security Audit v2
 
-**Date:** 2026-02-20
+> **Status: Resolved.** All v2 findings have been remediated. Only low-priority v1 residuals (SEC-9, SEC-10) remain as accepted risk.
+
+**Date:** 2026-02-20 (remediation verified 2026-02-24)
 **Scope:** Full codebase review (19 TypeScript source files, ~4,557 LOC)
 **Auditor:** Automated security review (Claude)
-**Baseline:** SECURITY_AUDIT.md (v1, same date)
+**Baseline:** [Security Audit v1](./SECURITY_AUDIT.md)
 
 ---
 
 ## Executive Summary
 
-This is the second-pass security audit of docs2llm. The v1 audit identified 10 security issues and 8 bugs. Since then, significant remediation work has been done: **12 of 18 v1 findings have been addressed** through the addition of `url-safe.ts` (SSRF protection), Pandoc flag blocklisting, size limits, fetch timeouts, DOM-safe rendering, and several bug fixes.
-
-This v2 audit identifies **7 new security vulnerabilities** and **5 new bugs** not covered by v1, and tracks the status of all v1 findings. The most critical new finding is that the web server binds to all network interfaces (`0.0.0.0`) without authentication, exposing all conversion and config-write endpoints to the local network.
+This is the second-pass security audit of docs2llm. All 7 new security vulnerabilities and 5 new bugs identified in this audit have been **fully remediated**. Of the 4 residual v1 items, 2 have also been fixed (SEC-8, BUG-6 mitigated). Only SEC-9 (empty catch blocks) and SEC-10 (MCP path validation) remain as accepted low-priority risk.
 
 | Category | Critical | High | Medium | Low | Info |
 |----------|----------|------|--------|-----|------|
-| New Security Issues | 1 | 1 | 2 | 3 | — |
-| New Bugs | — | — | 2 | 3 | — |
-| V1 Residual (unfixed) | — | — | — | 3 | 5 |
+| New Security Issues | ~~1~~ 0 | ~~1~~ 0 | ~~2~~ 0 | ~~3~~ 0 | — |
+| New Bugs | — | — | ~~2~~ 0 | ~~3~~ 0 | — |
+| V1 Residual (unfixed) | — | — | — | 2 | 5 |
 
 ---
 
@@ -44,25 +44,25 @@ The following v1 findings have been reviewed against the current codebase.
 | BUG-7 | Watch mode is non-recursive | **FIXED** | `watch.ts:28` now uses `{ recursive: true }` option |
 | BUG-8 | Watch mode race condition | **FIXED** | `watch.ts:23,36,60-61` now uses `inflight` Map with Promise tracking and automatic cleanup via `.finally()` |
 
-### Still Open (3 of 18)
+### Still Open (2 of 18) — accepted risk
 
 | V1 ID | Title | Severity | Current Status |
 |-------|-------|----------|----------------|
-| SEC-8 | `require()` in ESM module | LOW | `convert.ts:199` still uses `require("./tokens")` — inconsistent with ESM but functional in Bun |
-| SEC-9 | Empty catch blocks swallow errors | LOW | Still present in `clipboard.ts:67,90,101`, `scan.ts:41,47`, `cli.ts:555,574` |
-| SEC-10 | MCP path input not validated | LOW | `mcp.ts:22` still accepts arbitrary file paths without existence/scope checks |
+| SEC-9 | Empty catch blocks swallow errors | LOW | Still present in clipboard/scan/cli. Accepted — low risk, cosmetic. |
+| SEC-10 | MCP path input not validated | LOW | `mcp.ts` still accepts arbitrary file paths. Accepted — MCP clients are trusted. |
 
-### Mitigated but Not Fully Resolved (1 of 18)
+### Fixed since v2 audit (2 more)
 
-| V1 ID | Title | Severity | Notes |
-|-------|-------|----------|-------|
-| BUG-6 | Separator options selectable in interactive UI | LOW | Recursion now has depth limit of 3 (`interactive.ts:83-87,250-253`), preventing stack overflow. UX issue remains — separators should be non-selectable |
+| V1 ID | Title | Status | How Fixed |
+|-------|-------|--------|-----------|
+| SEC-8 | `require()` in ESM module | **FIXED** | Now uses ES `import()` instead of `require()` |
+| BUG-6 | Separator options selectable in interactive UI | **MITIGATED** | Recursion depth limit of 3 prevents stack overflow. UX issue remains minor. |
 
 ---
 
 ## New Security Vulnerabilities
 
-### SEC-N1: Web server binds to all network interfaces [CRITICAL]
+### SEC-N1: Web server binds to all network interfaces [CRITICAL] — FIXED
 
 **File:** `api.ts:391-392`
 
@@ -103,7 +103,7 @@ const server = Bun.serve({
 
 ---
 
-### SEC-N2: DNS rebinding bypasses SSRF IP validation [HIGH]
+### SEC-N2: DNS rebinding bypasses SSRF IP validation [HIGH] — FIXED
 
 **File:** `url-safe.ts:12-48`, `url-safe.ts:93-133`
 
@@ -126,7 +126,7 @@ This also applies to redirect validation: each hop calls `validateUrl(currentUrl
 
 ---
 
-### SEC-N3: Pandoc blocklist is incomplete — additional code execution vectors [MEDIUM]
+### SEC-N3: Pandoc blocklist is incomplete — additional code execution vectors [MEDIUM] — FIXED
 
 **File:** `outbound.ts:5`
 
@@ -161,7 +161,7 @@ The most dangerous are `--pdf-engine` (arbitrary command execution), `--defaults
 
 ---
 
-### SEC-N4: Content-Disposition header injection via filename [MEDIUM]
+### SEC-N4: Content-Disposition header injection via filename [MEDIUM] — FIXED
 
 **File:** `api.ts:238`
 
@@ -192,7 +192,7 @@ const safeName = baseName.replace(/[^a-zA-Z0-9._-]/g, "_") || "output";
 
 ---
 
-### SEC-N5: Template reference file deletion follows stored paths [LOW]
+### SEC-N5: Template reference file deletion follows stored paths [LOW] — FIXED
 
 **File:** `api.ts:367-376`
 
@@ -219,7 +219,7 @@ If an attacker can modify the config file (possible via SEC-N1 on LAN, or via a 
 
 ---
 
-### SEC-N6: `JSON.parse` on unsanitized form data [LOW]
+### SEC-N6: `JSON.parse` on unsanitized form data [LOW] — FIXED
 
 **File:** `api.ts:323`
 
@@ -241,7 +241,7 @@ const features = Array.isArray(parsed) ? parsed.filter(f => typeof f === "string
 
 ---
 
-### SEC-N7: Config directory traversal via `findLocalConfig` [LOW]
+### SEC-N7: Config directory traversal via `findLocalConfig` [LOW] — FIXED
 
 **File:** `config.ts:31-43`
 
@@ -271,7 +271,7 @@ On shared systems or CI environments, this could allow a malicious config (with 
 
 ## New Bugs
 
-### BUG-N1: Pandoc subprocess has no execution timeout [MEDIUM]
+### BUG-N1: Pandoc subprocess has no execution timeout [MEDIUM] — FIXED
 
 **File:** `outbound.ts:56-61`
 
@@ -298,7 +298,7 @@ clearTimeout(timeout);
 
 ---
 
-### BUG-N2: Watch mode flattens subdirectory structure [MEDIUM]
+### BUG-N2: Watch mode flattens subdirectory structure [MEDIUM] — FIXED
 
 **File:** `watch.ts:28-54`
 
@@ -329,7 +329,7 @@ const outPath = join(outDir, outName);
 
 ---
 
-### BUG-N3: Concurrent outbound requests may collide on temp files [LOW]
+### BUG-N3: Concurrent outbound requests may collide on temp files [LOW] — FIXED
 
 **File:** `api.ts:222`
 
@@ -345,7 +345,7 @@ The temporary file name uses `Date.now()` which has millisecond resolution. Two 
 
 ---
 
-### BUG-N4: `detectMimeFromBytes` returns generic type for ZIP-based formats [LOW]
+### BUG-N4: `detectMimeFromBytes` returns generic type for ZIP-based formats [LOW] — FIXED
 
 **File:** `cli.ts:791-793`
 
@@ -368,7 +368,7 @@ All Office XML formats (DOCX, PPTX, XLSX), EPUB, and OpenDocument formats share 
 
 ---
 
-### BUG-N5: `--chunk-size` accepts NaN without validation [LOW]
+### BUG-N5: `--chunk-size` accepts NaN without validation [LOW] — FIXED
 
 **File:** `cli.ts:149-154`
 
@@ -438,43 +438,26 @@ The repository contains no test files. The absence of tests increases the risk o
 
 ---
 
-## Remediation Priority
+## Remediation Status (updated 2026-02-24)
 
-### Immediate (should be fixed before any public/team deployment)
+All items from this audit have been remediated. Only two low-priority v1 residuals remain as accepted risk.
 
-| ID | Title | Effort |
+| ID | Title | Status |
 |----|-------|--------|
-| SEC-N1 | Server binds to 0.0.0.0 | One-line fix: add `hostname: "127.0.0.1"` |
-| SEC-N3 | Pandoc blocklist incomplete | Replace blocklist with allowlist |
-
-### Short-term (fix in next release)
-
-| ID | Title | Effort |
-|----|-------|--------|
-| SEC-N2 | DNS rebinding | Moderate — requires DNS pre-resolution |
-| SEC-N4 | Content-Disposition injection | Small — sanitize filename |
-| BUG-N1 | Pandoc has no timeout | Small — add setTimeout + kill |
-| BUG-N3 | Temp file collision | Small — add random suffix |
-| BUG-N5 | --chunk-size NaN | Small — add parseInt validation |
-
-### Medium-term (address when convenient)
-
-| ID | Title | Effort |
-|----|-------|--------|
-| SEC-N5 | Template ref file deletion | Small — validate path prefix |
-| SEC-N7 | Config directory traversal | Moderate — add traversal boundary |
-| BUG-N2 | Watch mode flattens subdirs | Small — preserve relative paths |
-| SEC-8 (v1) | require() in ESM | Small — change to import |
-| SEC-9 (v1) | Empty catch blocks | Small — add stderr logging |
-| SEC-10 (v1) | MCP path validation | Small — add existence check |
-
-### Low priority (nice to have)
-
-| ID | Title | Effort |
-|----|-------|--------|
-| SEC-N6 | JSON.parse unsanitized | Small — add type check |
-| BUG-N4 | ZIP MIME detection | Moderate — read ZIP directory |
-| BUG-6 (v1) | Separator selectable | Small — use non-selectable items |
+| SEC-N1 | Server binds to 0.0.0.0 | **FIXED** — `hostname: "127.0.0.1"` added |
+| SEC-N2 | DNS rebinding | **FIXED** — DNS pre-resolution with IP validation |
+| SEC-N3 | Pandoc blocklist incomplete | **FIXED** — replaced with allowlist |
+| SEC-N4 | Content-Disposition injection | **FIXED** — filename sanitized |
+| SEC-N5 | Template ref file deletion | **FIXED** — path prefix validation |
+| SEC-N6 | JSON.parse unsanitized | **FIXED** — array type check added |
+| SEC-N7 | Config directory traversal | **FIXED** — stops at home directory |
+| BUG-N1 | Pandoc has no timeout | **FIXED** — 60s timeout with kill |
+| BUG-N2 | Watch mode flattens subdirs | **FIXED** — preserves relative paths |
+| BUG-N3 | Temp file collision | **FIXED** — crypto.randomUUID suffix |
+| BUG-N4 | ZIP MIME detection | **FIXED** — inspects ZIP internals |
+| BUG-N5 | --chunk-size NaN | **FIXED** — parseInt validation added |
+| SEC-9 (v1) | Empty catch blocks | Accepted — low risk |
+| SEC-10 (v1) | MCP path validation | Accepted — MCP clients trusted |
 
 ---
 
