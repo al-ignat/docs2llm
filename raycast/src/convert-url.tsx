@@ -10,6 +10,7 @@ import {
 } from "@raycast/api";
 import { useState } from "react";
 import { convertUrl, isInstalled } from "./lib/docs2llm";
+import { ResultView } from "./lib/result-view";
 
 interface FormValues {
   url: string;
@@ -62,7 +63,18 @@ export default function Command() {
     }
 
     await showToast({ style: Toast.Style.Success, title: "Done" });
-    push(<ResultView content={result.content} url={url} />);
+
+    // Use hostname as display name for the source
+    let sourceName: string;
+    try {
+      sourceName = new URL(url).hostname;
+    } catch {
+      sourceName = url;
+    }
+
+    push(
+      <ResultView result={result} sourceName={sourceName} sourceUrl={url} />,
+    );
   }
 
   return (
@@ -89,21 +101,5 @@ export default function Command() {
         <Form.Dropdown.Item value="yaml" title="YAML" />
       </Form.Dropdown>
     </Form>
-  );
-}
-
-function ResultView({ content, url }: { content: string; url: string }) {
-  return (
-    <Detail
-      markdown={content}
-      navigationTitle={`Converted: ${url}`}
-      actions={
-        <ActionPanel>
-          <Action.CopyToClipboard title="Copy to Clipboard" content={content} />
-          <Action.Paste title="Paste to Frontmost App" content={content} />
-          <Action.OpenInBrowser title="Open Original URL" url={url} />
-        </ActionPanel>
-      }
-    />
   );
 }

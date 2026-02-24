@@ -34,6 +34,13 @@
       "subtitle": "docs2llm",
       "description": "Convert the selected Finder file to Markdown and copy to clipboard",
       "mode": "no-view"
+    },
+    {
+      "name": "export-markdown",
+      "title": "Export Markdown",
+      "subtitle": "docs2llm",
+      "description": "Convert Markdown to Word, PowerPoint, or HTML via Pandoc",
+      "mode": "view"
     }
   ],
   "preferences": [
@@ -66,6 +73,13 @@
       "required": false,
       "default": false,
       "label": "Enable OCR for images and scanned documents"
+    },
+    {
+      "name": "outputDir",
+      "title": "Output Directory",
+      "description": "Directory for saved files and exports. Defaults to ~/Downloads.",
+      "type": "directory",
+      "required": false
     }
   ],
   "dependencies": {

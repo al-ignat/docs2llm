@@ -10,6 +10,7 @@ import {
 } from "@raycast/api";
 import { useState } from "react";
 import { convertFile, isInstalled } from "./lib/docs2llm";
+import { ResultView } from "./lib/result-view";
 
 interface FormValues {
   file: string[];
@@ -83,7 +84,8 @@ You can also set a custom binary path in the extension preferences.`}
       return;
     }
 
-    push(<ResultView content={result.content} sourcePath={filePath} />);
+    const fileName = filePath.split("/").pop() || "file";
+    push(<ResultView result={result} sourceName={fileName} />);
   }
 
   return (
@@ -111,33 +113,5 @@ You can also set a custom binary path in the extension preferences.`}
         defaultValue={prefs.enableOcr ?? false}
       />
     </Form>
-  );
-}
-
-function ResultView({
-  content,
-  sourcePath,
-}: {
-  content: string;
-  sourcePath: string;
-}) {
-  const fileName = sourcePath.split("/").pop() || "file";
-
-  return (
-    <Detail
-      markdown={content}
-      navigationTitle={`Converted: ${fileName}`}
-      actions={
-        <ActionPanel>
-          <Action.CopyToClipboard title="Copy to Clipboard" content={content} />
-          <Action.Paste title="Paste to Frontmost App" content={content} />
-          <Action.CopyToClipboard
-            title="Copy as Code Block"
-            content={`\`\`\`\n${content}\n\`\`\``}
-            shortcut={{ modifiers: ["cmd", "shift"], key: "c" }}
-          />
-        </ActionPanel>
-      }
-    />
   );
 }
