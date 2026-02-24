@@ -27,6 +27,25 @@ Native desktop app wrapping the web UI. Thin Swift shell using `WKWebView` — n
 
 ## Changelog
 
+### 2026-02-24 — Smart Raycast Commands
+
+Three context-aware commands that auto-detect the source (Finder file, text selection, clipboard) and conversion direction (inbound/outbound):
+
+- Smart Copy, Smart Paste, Smart Save with `smart-detect.ts` cascade (PR #42)
+- Fix: expanded PATH in Raycast child process so Pandoc is reachable
+- Fix: CLI JSON key mismatch (`output` vs `outputPath`) in outbound response parsing
+- Fix: narrowed Pandoc error detection to avoid false positives
+- 81 vitest tests for smart commands, `bunfig.toml` to isolate from `bun test`
+
+### 2026-02-23 — Raycast Extension
+
+Full Raycast extension for docs2llm (PRs #38, #40, #41):
+
+- Convert File, Convert Clipboard, Copy as Rich Text, Markdown to Rich Text
+- Save Clipboard to File, Export Markdown (docx/pptx/html)
+- Full inbound/outbound conversion matrix
+- Token metadata, shared ResultView, preference-driven output directory
+
 ### 2026-02-23 — Standalone Binary
 
 Ship the CLI as a single native executable via `bun build --compile`. No Bun, Node, or npm required at runtime. Only external dependency: Pandoc (outbound conversion only).
