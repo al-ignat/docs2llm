@@ -1,5 +1,7 @@
 # docs2llm — Security Audit & Bug Report
 
+> **Status: Archived.** All items addressed. Superseded by [Security Audit v2](./SECURITY_AUDIT_V2.md).
+
 **Date:** 2026-02-20
 **Scope:** Full codebase review (19 TypeScript source files, ~3,400 LOC)
 

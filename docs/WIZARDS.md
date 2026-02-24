@@ -1,6 +1,8 @@
 # docs2llm — Wizard Wireframes
 
-All interactive flows as currently implemented. Entry points: `docs2llm`, `docs2llm init`, `docs2llm config`.
+> **Status: Reference.** All wizards below are implemented and shipping. This file documents the current interactive flows.
+
+Entry points: `docs2llm`, `docs2llm init`, `docs2llm config`.
 
 ---
 
