@@ -191,9 +191,7 @@ export default function Command() {
       writeFileSync(tmpMd, mdText, "utf-8");
       const result = await exportMarkdown(tmpMd, fmt);
       if (result.error) {
-        const isPandocError =
-          result.error.toLowerCase().includes("pandoc") ||
-          result.error.toLowerCase().includes("not found");
+        const isPandocError = result.error.toLowerCase().includes("pandoc");
         throw new Error(
           isPandocError ? "Pandoc required: brew install pandoc" : result.error,
         );

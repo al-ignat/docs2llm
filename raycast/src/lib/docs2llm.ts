@@ -174,11 +174,23 @@ function run(args: string[]): Promise<ConvertResult> {
 
   const fullArgs = [...invocation.prefix, ...args];
 
+  // Expand PATH so child process can find Pandoc and other tools
+  const expandedPath = [
+    process.env.PATH || "",
+    "/usr/local/bin",
+    "/opt/homebrew/bin",
+    join(HOME, ".local/bin"),
+  ].join(":");
+
   return new Promise((resolve) => {
     execFile(
       invocation.cmd,
       fullArgs,
-      { timeout: TIMEOUT_MS, maxBuffer: 50 * 1024 * 1024 },
+      {
+        timeout: TIMEOUT_MS,
+        maxBuffer: 50 * 1024 * 1024,
+        env: { ...process.env, PATH: expandedPath },
+      },
       (err, stdout, stderr) => {
         if (err) {
           const msg = stderr?.trim() || err.message;
@@ -265,11 +277,10 @@ export async function exportMarkdown(
     return { error: result.error };
   }
 
-  // The CLI with --json outputs JSON with an outputPath field
   try {
     const parsed = JSON.parse(result.content);
-    if (parsed.outputPath && existsSync(parsed.outputPath)) {
-      return { outputPath: parsed.outputPath };
+    if (parsed.output && existsSync(parsed.output)) {
+      return { outputPath: parsed.output };
     }
   } catch {
     // --json not supported or different output; fall through
@@ -311,8 +322,8 @@ export async function exportToHtml(
 
   try {
     const parsed = JSON.parse(result.content);
-    if (parsed.outputPath && existsSync(parsed.outputPath)) {
-      htmlPath = parsed.outputPath;
+    if (parsed.output && existsSync(parsed.output)) {
+      htmlPath = parsed.output;
     }
   } catch {
     // fall through
@@ -483,8 +494,8 @@ export async function convertWithTemplate(
 
   try {
     const parsed = JSON.parse(result.content);
-    if (parsed.outputPath && existsSync(parsed.outputPath)) {
-      return { outputPath: parsed.outputPath };
+    if (parsed.output && existsSync(parsed.output)) {
+      return { outputPath: parsed.output };
     }
   } catch {
     // fall through

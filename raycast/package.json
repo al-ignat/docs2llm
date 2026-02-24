@@ -4,7 +4,10 @@
   "description": "Convert documents to and from LLM-friendly formats. PDF, DOCX, images, URLs — to Markdown, JSON, YAML. Export Markdown to Word, PowerPoint, HTML. Rich text clipboard support.",
   "icon": "command-icon.png",
   "author": "ignataleinikov",
-  "categories": ["Developer Tools", "Productivity"],
+  "categories": [
+    "Developer Tools",
+    "Productivity"
+  ],
   "license": "MIT",
   "commands": [
     {
@@ -62,6 +65,27 @@
       "subtitle": "docs2llm",
       "description": "Convert selected Finder .md file to rich HTML on clipboard",
       "mode": "no-view"
+    },
+    {
+      "name": "smart-copy",
+      "title": "Smart Copy",
+      "subtitle": "docs2llm",
+      "description": "Auto-detect source (Finder file, selection, clipboard) and convert to clipboard",
+      "mode": "no-view"
+    },
+    {
+      "name": "smart-paste",
+      "title": "Smart Paste",
+      "subtitle": "docs2llm",
+      "description": "Convert clipboard content and paste into active app or save to Finder folder",
+      "mode": "no-view"
+    },
+    {
+      "name": "smart-save",
+      "title": "Smart Save",
+      "subtitle": "docs2llm",
+      "description": "Auto-detect source and save converted file",
+      "mode": "no-view"
     }
   ],
   "preferences": [
@@ -73,9 +97,18 @@
       "required": false,
       "default": "md",
       "data": [
-        { "title": "Markdown", "value": "md" },
-        { "title": "JSON", "value": "json" },
-        { "title": "YAML", "value": "yaml" }
+        {
+          "title": "Markdown",
+          "value": "md"
+        },
+        {
+          "title": "JSON",
+          "value": "json"
+        },
+        {
+          "title": "YAML",
+          "value": "yaml"
+        }
       ]
     },
     {
@@ -101,6 +134,28 @@
       "description": "Directory for saved files and exports. Defaults to ~/Downloads.",
       "type": "directory",
       "required": false
+    },
+    {
+      "name": "defaultExportFormat",
+      "title": "Default Export Format",
+      "description": "Default format for outbound exports (Smart Save, Smart Paste to Finder)",
+      "type": "dropdown",
+      "required": false,
+      "default": "docx",
+      "data": [
+        {
+          "title": "Word (.docx)",
+          "value": "docx"
+        },
+        {
+          "title": "PowerPoint (.pptx)",
+          "value": "pptx"
+        },
+        {
+          "title": "HTML (.html)",
+          "value": "html"
+        }
+      ]
     }
   ],
   "dependencies": {
@@ -111,12 +166,15 @@
     "@raycast/eslint-config": "^1.0.11",
     "@types/node": "22.13.10",
     "eslint": "^8.57.1",
-    "typescript": "^5.8.2"
+    "typescript": "^5.8.2",
+    "vitest": "^4.0.18"
   },
   "scripts": {
     "build": "ray build",
     "dev": "ray develop",
     "fix-lint": "ray lint --fix",
-    "lint": "ray lint"
+    "lint": "ray lint",
+    "test": "vitest run",
+    "test:watch": "vitest"
   }
 }
