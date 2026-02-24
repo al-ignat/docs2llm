@@ -1,0 +1,87 @@
+{
+  "name": "docs2llm",
+  "title": "Docs2llm",
+  "description": "Convert documents to LLM-friendly formats. PDF, DOCX, images, URLs — to Markdown, JSON, or YAML.",
+  "icon": "command-icon.png",
+  "author": "ignataleinikov",
+  "categories": ["Developer Tools", "Productivity"],
+  "license": "MIT",
+  "commands": [
+    {
+      "name": "convert-file",
+      "title": "Convert File",
+      "subtitle": "docs2llm",
+      "description": "Pick a file and convert it to Markdown, JSON, or YAML",
+      "mode": "view"
+    },
+    {
+      "name": "convert-clipboard",
+      "title": "Convert Clipboard",
+      "subtitle": "docs2llm",
+      "description": "Convert clipboard contents to Markdown",
+      "mode": "no-view"
+    },
+    {
+      "name": "convert-url",
+      "title": "Convert URL",
+      "subtitle": "docs2llm",
+      "description": "Fetch a URL and convert it to Markdown",
+      "mode": "view"
+    },
+    {
+      "name": "quick-convert",
+      "title": "Quick Convert",
+      "subtitle": "docs2llm",
+      "description": "Convert the selected Finder file to Markdown and copy to clipboard",
+      "mode": "no-view"
+    }
+  ],
+  "preferences": [
+    {
+      "name": "defaultFormat",
+      "title": "Default Format",
+      "description": "Default output format for conversions",
+      "type": "dropdown",
+      "required": false,
+      "default": "md",
+      "data": [
+        { "title": "Markdown", "value": "md" },
+        { "title": "JSON", "value": "json" },
+        { "title": "YAML", "value": "yaml" }
+      ]
+    },
+    {
+      "name": "binaryPath",
+      "title": "Binary Path",
+      "description": "Custom path to docs2llm binary. Leave empty to auto-detect from PATH.",
+      "type": "textfield",
+      "required": false,
+      "default": ""
+    },
+    {
+      "name": "enableOcr",
+      "title": "Enable OCR",
+      "description": "Use OCR when converting images and scanned PDFs",
+      "type": "checkbox",
+      "required": false,
+      "default": false,
+      "label": "Enable OCR for images and scanned documents"
+    }
+  ],
+  "dependencies": {
+    "@raycast/api": "^1.93.3",
+    "@raycast/utils": "^1.19.1"
+  },
+  "devDependencies": {
+    "@raycast/eslint-config": "^1.0.11",
+    "@types/node": "22.13.10",
+    "eslint": "^8.57.1",
+    "typescript": "^5.8.2"
+  },
+  "scripts": {
+    "build": "ray build",
+    "dev": "ray develop",
+    "fix-lint": "ray lint --fix",
+    "lint": "ray lint"
+  }
+}
