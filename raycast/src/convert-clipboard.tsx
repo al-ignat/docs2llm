@@ -1,8 +1,9 @@
 import { Clipboard, showHUD, showToast, Toast } from "@raycast/api";
 import { writeFileSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { convertFile, isInstalled } from "./lib/docs2llm";
+import { join, basename } from "node:path";
+import { convertFile, convertUrl, isInstalled } from "./lib/docs2llm";
+import { detectClipboard } from "./lib/clipboard-detect";
 
 export default async function Command() {
   if (!isInstalled()) {
@@ -10,28 +11,74 @@ export default async function Command() {
     return;
   }
 
-  const clipboardText = await Clipboard.readText();
-  if (!clipboardText || clipboardText.trim().length === 0) {
+  const clip = await detectClipboard();
+
+  if (clip.kind === "empty") {
     await showHUD("Clipboard is empty");
     return;
   }
 
-  // If clipboard already looks like plain text / markdown, just note it
-  const looksLikeHtml = clipboardText.trimStart().startsWith("<");
-  if (!looksLikeHtml) {
-    await Clipboard.copy(clipboardText);
+  if (clip.kind === "text") {
     await showHUD("Clipboard already contains plain text");
     return;
   }
 
-  // Write HTML to temp file and convert
-  const tmpPath = join(tmpdir(), `docs2llm-clip-${Date.now()}.html`);
-  try {
-    writeFileSync(tmpPath, clipboardText, "utf-8");
-
+  if (clip.kind === "url") {
     await showToast({
       style: Toast.Style.Animated,
-      title: "Converting clipboard...",
+      title: "Converting URL...",
+    });
+    const result = await convertUrl(clip.url);
+
+    if (result.error) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: "Conversion failed",
+        message: result.error,
+      });
+      return;
+    }
+
+    await Clipboard.copy(result.content);
+    let host: string;
+    try {
+      host = new URL(clip.url).hostname;
+    } catch {
+      host = "URL";
+    }
+    await showHUD(`Converted ${host} to Markdown`);
+    return;
+  }
+
+  if (clip.kind === "filepath") {
+    const fileName = basename(clip.path);
+    await showToast({
+      style: Toast.Style.Animated,
+      title: `Converting ${fileName}...`,
+    });
+    const result = await convertFile(clip.path);
+
+    if (result.error) {
+      await showToast({
+        style: Toast.Style.Failure,
+        title: "Conversion failed",
+        message: result.error,
+      });
+      return;
+    }
+
+    await Clipboard.copy(result.content);
+    await showHUD(`Converted ${fileName} to Markdown`);
+    return;
+  }
+
+  // clip.kind === "html"
+  const tmpPath = join(tmpdir(), `docs2llm-clip-${Date.now()}.html`);
+  try {
+    writeFileSync(tmpPath, clip.html, "utf-8");
+    await showToast({
+      style: Toast.Style.Animated,
+      title: "Converting HTML...",
     });
     const result = await convertFile(tmpPath, "md");
 
@@ -45,7 +92,7 @@ export default async function Command() {
     }
 
     await Clipboard.copy(result.content);
-    await showHUD("Converted to Markdown");
+    await showHUD("Converted HTML to Markdown");
   } finally {
     try {
       unlinkSync(tmpPath);
