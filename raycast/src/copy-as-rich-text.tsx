@@ -43,9 +43,7 @@ export default async function Command() {
   const result = await exportToHtml(filePath);
 
   if (result.error) {
-    const isPandocError =
-      result.error.toLowerCase().includes("pandoc") ||
-      result.error.toLowerCase().includes("not found");
+    const isPandocError = result.error.toLowerCase().includes("pandoc");
 
     await showHUD(
       isPandocError
