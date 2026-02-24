@@ -23,11 +23,22 @@ import {
   isFinderFrontmost,
 } from "./lib/smart-detect";
 
+interface CommandPrefs {
+  defaultFormat: string;
+  defaultExportFormat: string;
+  enableOcr: boolean;
+}
+
 export default async function Command() {
   if (!isInstalled()) {
     await showHUD("docs2llm not found — set binary path in preferences");
     return;
   }
+
+  const prefs = getPreferenceValues<CommandPrefs>();
+  const fmt = prefs.defaultFormat || "md";
+  const exportFmt = prefs.defaultExportFormat || "docx";
+  const ocr = prefs.enableOcr ?? false;
 
   const clip = await detectClipboard();
 
@@ -61,17 +72,19 @@ export default async function Command() {
       return;
     }
 
-    await pasteToFinder(clip, direction, folder);
+    await pasteToFinder(clip, direction, folder, fmt, exportFmt, ocr);
     return;
   }
 
   // --- Paste into text app ---
-  await pasteToApp(clip, direction);
+  await pasteToApp(clip, direction, fmt, ocr);
 }
 
 async function pasteToApp(
   clip: Exclude<Awaited<ReturnType<typeof detectClipboard>>, { kind: "empty" }>,
   direction: "inbound" | "outbound" | "none",
+  fmt: string,
+  ocr: boolean,
 ) {
   if (direction === "none") {
     // Plain text — just paste as-is
@@ -82,11 +95,11 @@ async function pasteToApp(
   }
 
   if (direction === "inbound") {
-    // Convert to Markdown and paste
-    const md = await convertToMarkdown(clip);
+    // Convert to LLM format and paste
+    const md = await convertToMarkdown(clip, fmt, ocr);
     if (md) {
       await Clipboard.paste(md);
-      await showHUD("Pasted as Markdown");
+      await showHUD(`Pasted as ${fmt.toUpperCase()}`);
     }
     return;
   }
@@ -122,13 +135,18 @@ async function pasteToFinder(
   clip: Exclude<Awaited<ReturnType<typeof detectClipboard>>, { kind: "empty" }>,
   direction: "inbound" | "outbound" | "none",
   folder: string,
+  fmt: string,
+  exportFmt: string,
+  ocr: boolean,
 ) {
   const timestamp = Date.now();
 
   if (direction === "inbound" || direction === "none") {
-    // Convert to Markdown (or save plain text as .md) and write file
+    // Convert to LLM format (or save plain text) and write file
     const md =
-      direction === "inbound" ? await convertToMarkdown(clip) : undefined;
+      direction === "inbound"
+        ? await convertToMarkdown(clip, fmt, ocr)
+        : undefined;
     const content = md || (clip.kind === "text" ? clip.text : undefined);
 
     if (!content) {
@@ -136,7 +154,7 @@ async function pasteToFinder(
       return;
     }
 
-    const name = makeFilename(clip, "md", timestamp);
+    const name = makeFilename(clip, fmt, timestamp);
     const outPath = join(folder, name);
     writeFileSync(outPath, content, "utf-8");
     await showHUD(`Saved ${name}`);
@@ -154,18 +172,15 @@ async function pasteToFinder(
     return;
   }
 
-  const prefs = getPreferenceValues<{ defaultExportFormat?: string }>();
-  const fmt = prefs.defaultExportFormat || "docx";
-
   const tmpMd = join(tmpdir(), `docs2llm-smartpaste-${timestamp}.md`);
   try {
     writeFileSync(tmpMd, mdText, "utf-8");
     await showToast({
       style: Toast.Style.Animated,
-      title: `Exporting to ${fmt}...`,
+      title: `Exporting to ${exportFmt}...`,
     });
 
-    const result = await exportMarkdown(tmpMd, fmt);
+    const result = await exportMarkdown(tmpMd, exportFmt);
     if (result.error) {
       await showToast(failToast(result.error));
       return;
@@ -194,9 +209,11 @@ async function pasteToFinder(
   }
 }
 
-/** Convert clipboard content to Markdown text. */
+/** Convert clipboard content to the specified format. */
 async function convertToMarkdown(
   clip: Exclude<Awaited<ReturnType<typeof detectClipboard>>, { kind: "empty" }>,
+  fmt: string,
+  ocr: boolean,
 ): Promise<string | undefined> {
   if (clip.kind === "html") {
     const tmpPath = join(tmpdir(), `docs2llm-smartpaste-${Date.now()}.html`);
@@ -206,7 +223,7 @@ async function convertToMarkdown(
         style: Toast.Style.Animated,
         title: "Converting HTML...",
       });
-      const result = await convertFile(tmpPath, "md");
+      const result = await convertFile(tmpPath, fmt, ocr);
       if (result.error) {
         await showToast(failToast(result.error));
         return undefined;
@@ -226,7 +243,7 @@ async function convertToMarkdown(
       style: Toast.Style.Animated,
       title: "Fetching URL...",
     });
-    const result = await convertUrl(clip.url);
+    const result = await convertUrl(clip.url, fmt);
     if (result.error) {
       await showToast(failToast(result.error));
       return undefined;
@@ -240,7 +257,7 @@ async function convertToMarkdown(
       style: Toast.Style.Animated,
       title: `Converting ${fileName}...`,
     });
-    const result = await convertFile(clip.path);
+    const result = await convertFile(clip.path, fmt, ocr);
     if (result.error) {
       await showToast(failToast(result.error));
       return undefined;

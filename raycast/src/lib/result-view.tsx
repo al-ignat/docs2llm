@@ -14,13 +14,20 @@ interface ResultViewProps {
   sourceName: string;
   /** If the source is a URL, show "Open Original URL" action. */
   sourceUrl?: string;
+  /** If set, show "Open in Editor" action for the saved file. */
+  savedFilePath?: string;
 }
 
 function formatNumber(n: number): string {
   return n.toLocaleString("en-US");
 }
 
-export function ResultView({ result, sourceName, sourceUrl }: ResultViewProps) {
+export function ResultView({
+  result,
+  sourceName,
+  sourceUrl,
+  savedFilePath,
+}: ResultViewProps) {
   async function handleSave() {
     const ext = "md";
     const baseName = sourceName.replace(/\.[^.]+$/, "");
@@ -84,6 +91,13 @@ export function ResultView({ result, sourceName, sourceUrl }: ResultViewProps) {
             content={`\`\`\`\n${result.content}\n\`\`\``}
             shortcut={{ modifiers: ["cmd", "shift"], key: "c" }}
           />
+          {savedFilePath && (
+            <Action.Open
+              title="Open in Editor"
+              target={savedFilePath}
+              shortcut={{ modifiers: ["cmd"], key: "o" }}
+            />
+          )}
           {sourceUrl && (
             <Action.OpenInBrowser title="Open Original URL" url={sourceUrl} />
           )}

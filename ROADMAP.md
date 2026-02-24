@@ -7,6 +7,16 @@ Standalone binary is built. Next step is getting it into users' hands.
 - [ ] Homebrew formula or direct download
 - [ ] Test on clean machine (no Bun installed)
 
+## Raycast Extension
+
+- [ ] Config management + template management (view/create/edit templates)
+- [ ] Batch/folder conversion
+- [ ] Watch integration from Raycast
+- [ ] Chunking and token budget controls
+- [ ] History / recent conversions
+- [ ] Drag-and-drop file target (Raycast `file` mode)
+- [ ] Quiet mode preference
+
 ## macOS App
 
 Native desktop app wrapping the web UI. Thin Swift shell using `WKWebView` — no Electron, no bundled Chromium. Starts the Bun server in the background, opens the UI in a native macOS window.
@@ -26,6 +36,19 @@ Native desktop app wrapping the web UI. Thin Swift shell using `WKWebView` — n
 ---
 
 ## Changelog
+
+### 2026-02-24 — Simplify Raycast Commands
+
+Consolidated 11 commands into 6 (3 view + 3 smart). Unified inbound/outbound in each view command.
+
+- Convert File: bidirectional — auto-detects inbound/outbound from file extension
+- Convert Clipboard: view mode with URL field, direction toggle, template support
+- Quick Convert: view mode with pre-filled form from Finder selection
+- Smart Copy/Paste/Save: wired OCR globally, per-command format preferences
+- New global prefs: `pandocPath`, `defaultTemplate`, required `outputDir`
+- Per-command prefs: `defaultFormat`, `defaultExportFormat` on all 6 commands
+- ResultView: added "Open in Editor" action
+- Deleted: convert-url, export-markdown, markdown-to-rich-text, copy-as-rich-text, save-clipboard
 
 ### 2026-02-24 — Smart Raycast Commands
 

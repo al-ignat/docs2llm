@@ -66,7 +66,11 @@ describe("Smart Paste", () => {
     vi.clearAllMocks();
     mocks.isInstalled.mockReturnValue(true);
     mocks.isFinderFrontmost.mockResolvedValue(false);
-    mocks.getPreferenceValues.mockReturnValue({});
+    mocks.getPreferenceValues.mockReturnValue({
+      defaultFormat: "md",
+      defaultExportFormat: "docx",
+      enableOcr: false,
+    });
   });
 
   // ---------------------------------------------------------------------------
@@ -107,7 +111,7 @@ describe("Smart Paste", () => {
       await Command();
 
       expect(mocks.clipboardPaste).toHaveBeenCalledWith("# Title");
-      expect(mocks.showHUD).toHaveBeenCalledWith("Pasted as Markdown");
+      expect(mocks.showHUD).toHaveBeenCalledWith("Pasted as MD");
     });
 
     it("URL → pastes Markdown", async () => {
@@ -123,9 +127,9 @@ describe("Smart Paste", () => {
 
       await Command();
 
-      expect(mocks.convertUrl).toHaveBeenCalledWith("https://example.com");
+      expect(mocks.convertUrl).toHaveBeenCalledWith("https://example.com", "md");
       expect(mocks.clipboardPaste).toHaveBeenCalledWith("# Example");
-      expect(mocks.showHUD).toHaveBeenCalledWith("Pasted as Markdown");
+      expect(mocks.showHUD).toHaveBeenCalledWith("Pasted as MD");
     });
 
     it("filepath inbound → pastes Markdown", async () => {
@@ -142,7 +146,7 @@ describe("Smart Paste", () => {
 
       await Command();
 
-      expect(mocks.convertFile).toHaveBeenCalledWith("/tmp/doc.docx");
+      expect(mocks.convertFile).toHaveBeenCalledWith("/tmp/doc.docx", "md", false);
       expect(mocks.clipboardPaste).toHaveBeenCalledWith("Content");
     });
 

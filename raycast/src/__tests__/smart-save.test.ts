@@ -55,6 +55,7 @@ describe("Smart Save", () => {
     mocks.getPreferenceValues.mockReturnValue({
       defaultFormat: "md",
       defaultExportFormat: "docx",
+      enableOcr: false,
     });
     mocks.getOutputDir.mockReturnValue("/Users/test/Downloads");
   });
@@ -96,7 +97,7 @@ describe("Smart Save", () => {
 
       await Command();
 
-      expect(mocks.convertFile).toHaveBeenCalledWith("/tmp/report.pdf", "md");
+      expect(mocks.convertFile).toHaveBeenCalledWith("/tmp/report.pdf", "md", false);
       expect(mocks.writeFileSync).toHaveBeenCalledWith(
         "/Users/test/Downloads/report.md",
         "# Report",
@@ -126,6 +127,7 @@ describe("Smart Save", () => {
       expect(mocks.convertFile).toHaveBeenCalledWith(
         expect.stringContaining("docs2llm-smartsave-"),
         "md",
+        false,
       );
       expect(mocks.writeFileSync).toHaveBeenCalledWith(
         expect.stringContaining("/Users/test/Downloads/converted-"),
@@ -213,7 +215,7 @@ describe("Smart Save", () => {
 
       await Command();
 
-      expect(mocks.convertFile).toHaveBeenCalledWith("/tmp/doc.docx", "md");
+      expect(mocks.convertFile).toHaveBeenCalledWith("/tmp/doc.docx", "md", false);
       expect(mocks.writeFileSync).toHaveBeenCalledWith(
         "/Users/test/Downloads/doc.md",
         "Content",
@@ -263,6 +265,7 @@ describe("Smart Save", () => {
       mocks.getPreferenceValues.mockReturnValue({
         defaultFormat: "json",
         defaultExportFormat: "docx",
+        enableOcr: false,
       });
       mocks.detectSource.mockResolvedValue({
         origin: "finder",
@@ -277,7 +280,7 @@ describe("Smart Save", () => {
 
       await Command();
 
-      expect(mocks.convertFile).toHaveBeenCalledWith("/tmp/report.pdf", "json");
+      expect(mocks.convertFile).toHaveBeenCalledWith("/tmp/report.pdf", "json", false);
       expect(mocks.writeFileSync).toHaveBeenCalledWith(
         "/Users/test/Downloads/report.json",
         '{"ok":true}',
@@ -374,6 +377,7 @@ describe("Smart Save", () => {
       mocks.getPreferenceValues.mockReturnValue({
         defaultFormat: "md",
         defaultExportFormat: "pptx",
+        enableOcr: false,
       });
       mocks.detectSource.mockResolvedValue({
         origin: "finder",

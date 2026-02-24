@@ -14,107 +14,226 @@
       "name": "convert-file",
       "title": "Convert File",
       "subtitle": "docs2llm",
-      "description": "Pick a file and convert it to Markdown, JSON, or YAML",
-      "mode": "view"
+      "description": "Pick a file and convert — auto-detects inbound (to Markdown) or outbound (to Word/PowerPoint/HTML)",
+      "mode": "view",
+      "preferences": [
+        {
+          "name": "defaultFormat",
+          "title": "Default Inbound Format",
+          "description": "Default format when converting files to LLM-friendly output",
+          "type": "dropdown",
+          "required": false,
+          "default": "md",
+          "data": [
+            { "title": "Markdown", "value": "md" },
+            { "title": "JSON", "value": "json" },
+            { "title": "YAML", "value": "yaml" }
+          ]
+        },
+        {
+          "name": "defaultExportFormat",
+          "title": "Default Export Format",
+          "description": "Default format when exporting Markdown via Pandoc",
+          "type": "dropdown",
+          "required": false,
+          "default": "docx",
+          "data": [
+            { "title": "Word (.docx)", "value": "docx" },
+            { "title": "PowerPoint (.pptx)", "value": "pptx" },
+            { "title": "HTML (.html)", "value": "html" }
+          ]
+        }
+      ]
     },
     {
       "name": "convert-clipboard",
       "title": "Convert Clipboard",
       "subtitle": "docs2llm",
-      "description": "Convert clipboard contents to Markdown",
-      "mode": "no-view"
-    },
-    {
-      "name": "convert-url",
-      "title": "Convert URL",
-      "subtitle": "docs2llm",
-      "description": "Fetch a URL and convert it to Markdown",
-      "mode": "view"
+      "description": "Detect clipboard content (HTML, URL, file, text) and convert bidirectionally",
+      "mode": "view",
+      "preferences": [
+        {
+          "name": "defaultFormat",
+          "title": "Default Inbound Format",
+          "description": "Default format when converting clipboard to LLM-friendly output",
+          "type": "dropdown",
+          "required": false,
+          "default": "md",
+          "data": [
+            { "title": "Markdown", "value": "md" },
+            { "title": "JSON", "value": "json" },
+            { "title": "YAML", "value": "yaml" }
+          ]
+        },
+        {
+          "name": "defaultExportFormat",
+          "title": "Default Export Format",
+          "description": "Default format when exporting Markdown via Pandoc",
+          "type": "dropdown",
+          "required": false,
+          "default": "docx",
+          "data": [
+            { "title": "Word (.docx)", "value": "docx" },
+            { "title": "PowerPoint (.pptx)", "value": "pptx" },
+            { "title": "HTML (.html)", "value": "html" }
+          ]
+        }
+      ]
     },
     {
       "name": "quick-convert",
       "title": "Quick Convert",
       "subtitle": "docs2llm",
-      "description": "Convert the selected Finder file to Markdown and copy to clipboard",
-      "mode": "no-view"
-    },
-    {
-      "name": "export-markdown",
-      "title": "Export Markdown",
-      "subtitle": "docs2llm",
-      "description": "Convert Markdown to Word, PowerPoint, or HTML via Pandoc",
-      "mode": "view"
-    },
-    {
-      "name": "markdown-to-rich-text",
-      "title": "Markdown to Rich Text",
-      "subtitle": "docs2llm",
-      "description": "Convert clipboard Markdown to rich HTML — paste formatted text into any app",
-      "mode": "no-view"
-    },
-    {
-      "name": "save-clipboard",
-      "title": "Save Clipboard",
-      "subtitle": "docs2llm",
-      "description": "Detect clipboard content and save as a converted file",
-      "mode": "view"
-    },
-    {
-      "name": "copy-as-rich-text",
-      "title": "Copy as Rich Text",
-      "subtitle": "docs2llm",
-      "description": "Convert selected Finder .md file to rich HTML on clipboard",
-      "mode": "no-view"
+      "description": "Convert the selected Finder file — pre-filled form with bidirectional support",
+      "mode": "view",
+      "preferences": [
+        {
+          "name": "defaultFormat",
+          "title": "Default Inbound Format",
+          "description": "Default format when converting files to LLM-friendly output",
+          "type": "dropdown",
+          "required": false,
+          "default": "md",
+          "data": [
+            { "title": "Markdown", "value": "md" },
+            { "title": "JSON", "value": "json" },
+            { "title": "YAML", "value": "yaml" }
+          ]
+        },
+        {
+          "name": "defaultExportFormat",
+          "title": "Default Export Format",
+          "description": "Default format when exporting Markdown via Pandoc",
+          "type": "dropdown",
+          "required": false,
+          "default": "docx",
+          "data": [
+            { "title": "Word (.docx)", "value": "docx" },
+            { "title": "PowerPoint (.pptx)", "value": "pptx" },
+            { "title": "HTML (.html)", "value": "html" }
+          ]
+        }
+      ]
     },
     {
       "name": "smart-copy",
       "title": "Smart Copy",
       "subtitle": "docs2llm",
       "description": "Auto-detect source (Finder file, selection, clipboard) and convert to clipboard",
-      "mode": "no-view"
+      "mode": "no-view",
+      "preferences": [
+        {
+          "name": "defaultFormat",
+          "title": "Default Inbound Format",
+          "description": "Default format for inbound conversions",
+          "type": "dropdown",
+          "required": false,
+          "default": "md",
+          "data": [
+            { "title": "Markdown", "value": "md" },
+            { "title": "JSON", "value": "json" },
+            { "title": "YAML", "value": "yaml" }
+          ]
+        },
+        {
+          "name": "defaultExportFormat",
+          "title": "Default Export Format",
+          "description": "Default format for outbound exports",
+          "type": "dropdown",
+          "required": false,
+          "default": "docx",
+          "data": [
+            { "title": "Word (.docx)", "value": "docx" },
+            { "title": "PowerPoint (.pptx)", "value": "pptx" },
+            { "title": "HTML (.html)", "value": "html" }
+          ]
+        }
+      ]
     },
     {
       "name": "smart-paste",
       "title": "Smart Paste",
       "subtitle": "docs2llm",
       "description": "Convert clipboard content and paste into active app or save to Finder folder",
-      "mode": "no-view"
+      "mode": "no-view",
+      "preferences": [
+        {
+          "name": "defaultFormat",
+          "title": "Default Inbound Format",
+          "description": "Default format for inbound conversions",
+          "type": "dropdown",
+          "required": false,
+          "default": "md",
+          "data": [
+            { "title": "Markdown", "value": "md" },
+            { "title": "JSON", "value": "json" },
+            { "title": "YAML", "value": "yaml" }
+          ]
+        },
+        {
+          "name": "defaultExportFormat",
+          "title": "Default Export Format",
+          "description": "Default format for outbound exports",
+          "type": "dropdown",
+          "required": false,
+          "default": "docx",
+          "data": [
+            { "title": "Word (.docx)", "value": "docx" },
+            { "title": "PowerPoint (.pptx)", "value": "pptx" },
+            { "title": "HTML (.html)", "value": "html" }
+          ]
+        }
+      ]
     },
     {
       "name": "smart-save",
       "title": "Smart Save",
       "subtitle": "docs2llm",
       "description": "Auto-detect source and save converted file",
-      "mode": "no-view"
+      "mode": "no-view",
+      "preferences": [
+        {
+          "name": "defaultFormat",
+          "title": "Default Inbound Format",
+          "description": "Default format for inbound conversions",
+          "type": "dropdown",
+          "required": false,
+          "default": "md",
+          "data": [
+            { "title": "Markdown", "value": "md" },
+            { "title": "JSON", "value": "json" },
+            { "title": "YAML", "value": "yaml" }
+          ]
+        },
+        {
+          "name": "defaultExportFormat",
+          "title": "Default Export Format",
+          "description": "Default format for outbound exports",
+          "type": "dropdown",
+          "required": false,
+          "default": "docx",
+          "data": [
+            { "title": "Word (.docx)", "value": "docx" },
+            { "title": "PowerPoint (.pptx)", "value": "pptx" },
+            { "title": "HTML (.html)", "value": "html" }
+          ]
+        }
+      ]
     }
   ],
   "preferences": [
     {
-      "name": "defaultFormat",
-      "title": "Default Format",
-      "description": "Default output format for conversions",
-      "type": "dropdown",
-      "required": false,
-      "default": "md",
-      "data": [
-        {
-          "title": "Markdown",
-          "value": "md"
-        },
-        {
-          "title": "JSON",
-          "value": "json"
-        },
-        {
-          "title": "YAML",
-          "value": "yaml"
-        }
-      ]
-    },
-    {
       "name": "binaryPath",
       "title": "Binary Path",
       "description": "Custom path to docs2llm binary. Leave empty to auto-detect from PATH.",
+      "type": "textfield",
+      "required": false,
+      "default": ""
+    },
+    {
+      "name": "pandocPath",
+      "title": "Pandoc Path",
+      "description": "Custom path to Pandoc binary. Leave empty to auto-detect from PATH.",
       "type": "textfield",
       "required": false,
       "default": ""
@@ -131,31 +250,17 @@
     {
       "name": "outputDir",
       "title": "Output Directory",
-      "description": "Directory for saved files and exports. Defaults to ~/Downloads.",
+      "description": "Directory for saved files and exports (required)",
       "type": "directory",
-      "required": false
+      "required": true
     },
     {
-      "name": "defaultExportFormat",
-      "title": "Default Export Format",
-      "description": "Default format for outbound exports (Smart Save, Smart Paste to Finder)",
-      "type": "dropdown",
+      "name": "defaultTemplate",
+      "title": "Default Template",
+      "description": "Default template name for outbound conversions. Must match a template in ~/.config/docs2llm/config.yaml.",
+      "type": "textfield",
       "required": false,
-      "default": "docx",
-      "data": [
-        {
-          "title": "Word (.docx)",
-          "value": "docx"
-        },
-        {
-          "title": "PowerPoint (.pptx)",
-          "value": "pptx"
-        },
-        {
-          "title": "HTML (.html)",
-          "value": "html"
-        }
-      ]
+      "default": ""
     }
   ],
   "dependencies": {
