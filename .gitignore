@@ -4,6 +4,7 @@ node_modules/
 CLAUDE.md
 .docs2llm.yaml
 .con-the-doc.yaml
+.kreuzberg/
 
 # Build output
 /docs2llm
