@@ -5,7 +5,7 @@
 import { resolve4 as dnsResolve4, resolve6 as dnsResolve6 } from "dns/promises";
 import { errorMessage } from "../shared/errors";
 
-export const MAX_RESPONSE_BYTES = 100 * 1024 * 1024; // 100 MB
+export const MAX_INPUT_BYTES = 100 * 1024 * 1024; // 100 MB
 export const FETCH_TIMEOUT_MS = 30_000; // 30 seconds
 export const MAX_REDIRECTS = 5;
 
@@ -214,9 +214,9 @@ export async function safeFetchBytes(
 
   // Check Content-Length header as early rejection
   const declaredLength = response.headers.get("content-length");
-  if (declaredLength && parseInt(declaredLength, 10) > MAX_RESPONSE_BYTES) {
+  if (declaredLength && parseInt(declaredLength, 10) > MAX_INPUT_BYTES) {
     throw new Error(
-      `Response too large: ${declaredLength} bytes (max ${MAX_RESPONSE_BYTES})`,
+      `Response too large: ${declaredLength} bytes (max ${MAX_INPUT_BYTES})`,
     );
   }
 
@@ -234,10 +234,10 @@ export async function safeFetchBytes(
     if (done) break;
 
     totalBytes += value.byteLength;
-    if (totalBytes > MAX_RESPONSE_BYTES) {
+    if (totalBytes > MAX_INPUT_BYTES) {
       reader.cancel();
       throw new Error(
-        `Response exceeded size limit: >${MAX_RESPONSE_BYTES} bytes`,
+        `Response exceeded size limit: >${MAX_INPUT_BYTES} bytes`,
       );
     }
     chunks.push(value);

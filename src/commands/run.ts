@@ -8,6 +8,7 @@ import { buildPandocArgs, type Config } from "../core/config";
 import { getTokenStats, formatTokenStats } from "../core/tokens";
 import { fetchAndConvert } from "./fetch";
 import { errorMessage } from "../shared/errors";
+import { MAX_INPUT_BYTES } from "../core/url-safe";
 
 function confirm(prompt: string): Promise<boolean> {
   return new Promise((resolve) => {
@@ -383,8 +384,6 @@ export async function convertUrl(url: string, format: OutputFormat, outputDir?: 
   }
 }
 
-const MAX_STDIN_BYTES = 100 * 1024 * 1024; // 100 MB
-
 export async function convertStdin(
   format: OutputFormat,
   useStdout: boolean,
@@ -401,8 +400,8 @@ export async function convertStdin(
   let totalLength = 0;
   for await (const chunk of Bun.stdin.stream()) {
     totalLength += chunk.length;
-    if (totalLength > MAX_STDIN_BYTES) {
-      cliError(`✗ stdin input exceeds ${MAX_STDIN_BYTES / (1024 * 1024)} MB size limit.`);
+    if (totalLength > MAX_INPUT_BYTES) {
+      cliError(`✗ stdin input exceeds ${MAX_INPUT_BYTES / (1024 * 1024)} MB size limit.`);
       process.exit(1);
     }
     inputChunks.push(chunk);

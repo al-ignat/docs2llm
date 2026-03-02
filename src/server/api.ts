@@ -1,7 +1,7 @@
 import { convertBytes, convertHtmlToMarkdown, isImageMime, isTesseractError, TESSERACT_INSTALL_HINT } from "../core/convert";
 import { errorMessage } from "../shared/errors";
 import { getTokenStats, checkLLMFit, formatLLMFit } from "../core/tokens";
-import { safeFetchBytes } from "../core/url-safe";
+import { safeFetchBytes, MAX_INPUT_BYTES } from "../core/url-safe";
 import { convertMarkdownTo, type OutboundFormat } from "../core/outbound";
 import {
   loadConfig,
@@ -18,8 +18,6 @@ import { tmpdir, homedir } from "os";
 import { unlinkSync, existsSync, mkdirSync } from "fs";
 import { join, dirname, resolve } from "path";
 import { HTML } from "./ui";
-
-const MAX_UPLOAD_BYTES = 100 * 1024 * 1024; // 100 MB
 
 const MIME_MAP: Record<string, string> = {
   pdf: "application/pdf",
@@ -423,7 +421,7 @@ export function startServer(port = 3000): { port: number; stop: () => void } {
   const server = Bun.serve({
     port,
     hostname: "127.0.0.1",
-    maxRequestBodySize: MAX_UPLOAD_BYTES,
+    maxRequestBodySize: MAX_INPUT_BYTES,
     async fetch(req) {
       const url = new URL(req.url);
 

@@ -2,14 +2,17 @@ import { readdirSync, statSync } from "fs";
 import { join, extname, basename } from "path";
 import { homedir } from "os";
 
-const CONVERTIBLE_EXTS = new Set([
+/** Inbound-only extensions (no .md — used for watch mode and batch conversion) */
+export const INBOUND_ONLY_EXTS = new Set([
   ".docx", ".doc", ".pdf", ".pptx", ".ppt",
   ".xlsx", ".xls", ".odt", ".odp", ".ods",
   ".rtf", ".epub", ".mobi", ".eml", ".msg",
   ".csv", ".tsv", ".html", ".xml", ".txt",
   ".png", ".jpg", ".jpeg", ".tiff", ".bmp", ".gif", ".webp",
-  ".md",
 ]);
+
+/** All convertible extensions including .md (used for interactive file scanning) */
+export const CONVERTIBLE_EXTS = new Set([...INBOUND_ONLY_EXTS, ".md"]);
 
 export interface FileInfo {
   path: string;
