@@ -1,6 +1,6 @@
 import * as p from "@clack/prompts";
 import { resolve, extname, dirname, join, basename } from "path";
-import { statSync, existsSync, mkdirSync } from "fs";
+import { statSync, existsSync, mkdirSync, readdirSync } from "fs";
 import { homedir } from "os";
 import { convertFile, convertFileWithSmartOcr, looksLikeScannedPdf, isImageFile, isTesseractError, TESSERACT_INSTALL_HINT, type OutputFormat } from "../core/convert";
 import { writeOutput } from "../core/output";
@@ -457,8 +457,7 @@ async function convert(
       // Offer to shorten or split if too long for any model
       if (anyTooLong(fits)) {
         const target = smallestLimit(fits)!;
-        const { splitToFit: doSplit } = await import("../core/tokens");
-        const splitResult = doSplit(result.content, target.limit);
+        const splitResult = splitToFit(result.content, target.limit);
         const numParts = splitResult.parts.length;
 
         const action = await p.select({
@@ -477,10 +476,9 @@ async function convert(
           const newStats = getTokenStats(shortened);
           p.log.success(`Shortened to ~${newStats.tokens.toLocaleString()} tokens`);
         } else if (!p.isCancel(action) && action === "split") {
-          const { dirname: pathDirname, basename: pathBasename, extname: pathExtname } = await import("path");
-          const dir = pathDirname(plan.outputPath);
-          const base = pathBasename(plan.outputPath, pathExtname(plan.outputPath));
-          const ext = pathExtname(plan.outputPath);
+          const dir = dirname(plan.outputPath);
+          const base = basename(plan.outputPath, extname(plan.outputPath));
+          const ext = extname(plan.outputPath);
 
           for (let i = 0; i < splitResult.parts.length; i++) {
             const partPath = join(dir, `${base}-part-${i + 1}${ext}`);
@@ -504,9 +502,6 @@ async function convert(
 }
 
 async function convertUrlInteractive(url: string, config?: Config) {
-  const { basename: pathBasename } = await import("path");
-  const { resolve: pathResolve } = await import("path");
-
   const s = p.spinner();
   s.start(`Fetching ${url}…`);
 
@@ -515,9 +510,9 @@ async function convertUrlInteractive(url: string, config?: Config) {
 
     // Derive output filename from URL
     let urlPath = new URL(url).pathname.replace(/\/$/, "");
-    let name = pathBasename(urlPath) || "page";
+    let name = basename(urlPath) || "page";
     name = name.replace(/\.[^.]+$/, "");
-    const outPath = pathResolve(`${name}.md`);
+    const outPath = resolve(`${name}.md`);
 
     if (existsSync(outPath)) {
       s.stop("File already exists");
@@ -543,11 +538,8 @@ async function convertUrlInteractive(url: string, config?: Config) {
 }
 
 async function convertBatchInteractive(dir: string, config?: Config) {
-  const { readdirSync, statSync: fStatSync } = await import("fs");
-  const { join, extname: pathExtname } = await import("path");
-
   const files = readdirSync(dir, { withFileTypes: true })
-    .filter((e) => e.isFile() && !e.name.startsWith(".") && INBOUND_ONLY_EXTS.has(pathExtname(e.name).toLowerCase()))
+    .filter((e) => e.isFile() && !e.name.startsWith(".") && INBOUND_ONLY_EXTS.has(extname(e.name).toLowerCase()))
     .map((e) => join(dir, e.name));
 
   if (files.length === 0) {
