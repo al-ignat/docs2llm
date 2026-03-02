@@ -6,9 +6,10 @@ import { writeOutput } from "../core/output";
 import { buildPlan, ValidationError } from "../core/validate";
 import { buildPandocArgs, type Config } from "../core/config";
 import { getTokenStats, formatTokenStats } from "../core/tokens";
-import { fetchAndConvert } from "./fetch";
+import { fetchAndConvert } from "../core/fetch";
 import { errorMessage } from "../shared/errors";
 import { MAX_INPUT_BYTES } from "../core/url-safe";
+import { detectMimeFromBytes } from "../core/mime";
 
 function confirm(prompt: string): Promise<boolean> {
   return new Promise((resolve) => {
@@ -463,39 +464,3 @@ export async function convertStdin(
   }
 }
 
-function detectMimeFromBytes(data: Uint8Array): string {
-  // PDF: %PDF
-  if (data[0] === 0x25 && data[1] === 0x50 && data[2] === 0x44 && data[3] === 0x46) {
-    return "application/pdf";
-  }
-  // ZIP-based (docx, pptx, xlsx, epub, odt): PK\x03\x04
-  if (data[0] === 0x50 && data[1] === 0x4b && data[2] === 0x03 && data[3] === 0x04) {
-    // Scan ZIP local file headers for characteristic paths to identify the format
-    const text = new TextDecoder("ascii", { fatal: false }).decode(data.subarray(0, Math.min(data.length, 8192)));
-    if (text.includes("word/document.xml")) return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-    if (text.includes("ppt/presentation.xml")) return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
-    if (text.includes("xl/workbook.xml")) return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-    if (text.includes("META-INF/container.xml")) return "application/epub+zip";
-    if (text.includes("mimetype")) return "application/zip"; // ODF — let Kreuzberg refine
-    return "application/zip";
-  }
-  // PNG
-  if (data[0] === 0x89 && data[1] === 0x50 && data[2] === 0x4e && data[3] === 0x47) {
-    return "image/png";
-  }
-  // JPEG
-  if (data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff) {
-    return "image/jpeg";
-  }
-  // GIF
-  if (data[0] === 0x47 && data[1] === 0x49 && data[2] === 0x46) {
-    return "image/gif";
-  }
-  // Try as text/HTML
-  const head = new TextDecoder().decode(data.slice(0, 256)).trim();
-  if (head.startsWith("<!") || head.startsWith("<html") || head.startsWith("<HTML")) {
-    return "text/html";
-  }
-  // Default to plain text
-  return "text/plain";
-}

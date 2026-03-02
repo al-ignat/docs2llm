@@ -18,41 +18,9 @@ import { tmpdir, homedir } from "os";
 import { unlinkSync, existsSync, mkdirSync } from "fs";
 import { join, dirname, resolve } from "path";
 import { HTML } from "./ui";
-
-const MIME_MAP: Record<string, string> = {
-  pdf: "application/pdf",
-  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-  doc: "application/msword",
-  ppt: "application/vnd.ms-powerpoint",
-  xls: "application/vnd.ms-excel",
-  odt: "application/vnd.oasis.opendocument.text",
-  odp: "application/vnd.oasis.opendocument.presentation",
-  ods: "application/vnd.oasis.opendocument.spreadsheet",
-  rtf: "application/rtf",
-  epub: "application/epub+zip",
-  csv: "text/csv",
-  tsv: "text/tab-separated-values",
-  html: "text/html",
-  xml: "application/xml",
-  txt: "text/plain",
-  eml: "message/rfc822",
-  png: "image/png",
-  jpg: "image/jpeg",
-  jpeg: "image/jpeg",
-  tiff: "image/tiff",
-  bmp: "image/bmp",
-  gif: "image/gif",
-  webp: "image/webp",
-};
+import { MIME_MAP, guessMime } from "../core/mime";
 
 const SUPPORTED_FORMATS = Object.entries(MIME_MAP).map(([ext, mime]) => ({ ext, mime }));
-
-function guessMime(filename: string): string {
-  const ext = filename.split(".").pop()?.toLowerCase() ?? "";
-  return MIME_MAP[ext] ?? "application/octet-stream";
-}
 
 async function handleConvert(req: Request): Promise<Response> {
   let formData: FormData;

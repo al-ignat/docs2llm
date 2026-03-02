@@ -21,7 +21,7 @@ import {
   splitToFit,
   estimateTokens,
 } from "../core/tokens";
-import { fetchAndConvert } from "./fetch";
+import { fetchAndConvert } from "../core/fetch";
 import { errorMessage } from "../shared/errors";
 
 export type FormatChoice =
