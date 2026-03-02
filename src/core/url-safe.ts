@@ -3,6 +3,7 @@
  */
 
 import { resolve as dnsResolve } from "dns/promises";
+import { errorMessage } from "../shared/errors";
 
 export const MAX_RESPONSE_BYTES = 100 * 1024 * 1024; // 100 MB
 export const FETCH_TIMEOUT_MS = 30_000; // 30 seconds
@@ -114,9 +115,9 @@ async function validateResolvedIPs(hostname: string): Promise<void> {
         throw new Error(`Blocked request: ${hostname} resolves to private IP ${addr}`);
       }
     }
-  } catch (err: any) {
+  } catch (err) {
     // Re-throw our own validation errors
-    if (err.message?.startsWith("Blocked")) throw err;
+    if (errorMessage(err).startsWith("Blocked")) throw err;
     // DNS resolution failures will be caught by fetch() itself
   }
 }
@@ -140,9 +141,9 @@ export async function safeFetch(url: string): Promise<Response> {
         signal: controller.signal,
         redirect: "manual",
       });
-    } catch (err: any) {
+    } catch (err) {
       clearTimeout(timer);
-      if (err.name === "AbortError") {
+      if (err instanceof Error && err.name === "AbortError") {
         throw new Error(`Request timed out after ${FETCH_TIMEOUT_MS / 1000}s: ${currentUrl}`);
       }
       throw err;

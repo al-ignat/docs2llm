@@ -4,6 +4,7 @@ import { z } from "zod";
 import { convertFile, convertBytes, isTesseractError, TESSERACT_INSTALL_HINT, type OcrOptions } from "../core/convert";
 import { fetchAndConvert } from "../commands/fetch";
 import { getTokenStats } from "../core/tokens";
+import { errorMessage } from "../shared/errors";
 
 export async function startMcpServer() {
   const server = new McpServer({
@@ -43,10 +44,10 @@ export async function startMcpServer() {
             { type: "text", text: `---\n${metadata.join("\n")}\n---\n\n${result.content}` },
           ],
         };
-      } catch (err: any) {
+      } catch (err) {
         const msg = isTesseractError(err)
-          ? `Error converting file: ${err.message ?? err}\n\n${TESSERACT_INSTALL_HINT}`
-          : `Error converting file: ${err.message ?? err}`;
+          ? `Error converting file: ${errorMessage(err)}\n\n${TESSERACT_INSTALL_HINT}`
+          : `Error converting file: ${errorMessage(err)}`;
         return {
           content: [{ type: "text", text: msg }],
           isError: true,
@@ -74,9 +75,9 @@ export async function startMcpServer() {
             },
           ],
         };
-      } catch (err: any) {
+      } catch (err) {
         return {
-          content: [{ type: "text", text: `Error fetching URL: ${err.message ?? err}` }],
+          content: [{ type: "text", text: `Error fetching URL: ${errorMessage(err)}` }],
           isError: true,
         };
       }

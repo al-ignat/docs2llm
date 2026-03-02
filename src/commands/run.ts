@@ -7,6 +7,7 @@ import { buildPlan, ValidationError } from "../core/validate";
 import { buildPandocArgs, type Config } from "../core/config";
 import { getTokenStats, formatTokenStats } from "../core/tokens";
 import { fetchAndConvert } from "./fetch";
+import { errorMessage } from "../shared/errors";
 
 function confirm(prompt: string): Promise<boolean> {
   return new Promise((resolve) => {
@@ -73,7 +74,7 @@ export async function convertSingleFile(
       formatExplicit,
       defaultMdFormat: config?.defaults?.format,
     });
-  } catch (err: any) {
+  } catch (err) {
     if (err instanceof ValidationError) {
       if (jsonMode) {
         const result: ConversionResult = { success: false, input: filePath, format, duration_ms: Math.round(performance.now() - t0), error: err.message };
@@ -133,7 +134,7 @@ export async function convertSingleFile(
       if (effectiveOcr !== ocr) {
         try {
           result = await convertFile(filePath, plan.format, { ocr: effectiveOcr });
-        } catch (ocrErr: any) {
+        } catch (ocrErr) {
           if (isTesseractError(ocrErr)) {
             cliWarn("⚠ OCR unavailable (Tesseract not installed). Converting without OCR…");
             result = await convertFile(filePath, plan.format, { ocr: ocr });
@@ -153,7 +154,7 @@ export async function convertSingleFile(
           if (!useStdout) cliLog("⚠ This looks like a scanned document. Retrying with OCR…");
           result = await convertFile(filePath, plan.format, { ocr: { enabled: true, force: true } });
           usedOcr = true;
-        } catch (ocrErr: any) {
+        } catch (ocrErr) {
           if (isTesseractError(ocrErr)) {
             cliWarn("⚠ OCR unavailable (Tesseract not installed). Keeping non-OCR result.");
           } else {
@@ -203,8 +204,8 @@ export async function convertSingleFile(
         cliWarn("⚠ Some text may not have been extracted correctly. Check the output.");
       }
     }
-  } catch (err: any) {
-    const msg = err.message ?? String(err);
+  } catch (err) {
+    const msg = errorMessage(err);
     if (jsonMode) {
       const jsonResult: ConversionResult = { success: false, input: filePath, format: plan.format, duration_ms: Math.round(performance.now() - t0), error: msg };
       process.stdout.write(JSON.stringify(jsonResult));
@@ -309,7 +310,7 @@ export async function convertFolder(
       }
 
       filePlans.push({ file, plan });
-    } catch (err: any) {
+    } catch (err) {
       if (err instanceof ValidationError) {
         cliLog(`⊘ ${file}: ${err.message}`);
         skipped++;
@@ -346,7 +347,7 @@ export async function convertFolder(
           if (isImg) {
             try {
               result = await convertFile(file, plan.format, { ocr: batchOcr });
-            } catch (ocrErr: any) {
+            } catch (ocrErr) {
               if (isTesseractError(ocrErr)) {
                 cliWarn(`⚠ ${file}: OCR unavailable, converting without OCR`);
                 result = await convertFile(file, plan.format, { ocr: ocr });
@@ -364,7 +365,7 @@ export async function convertFolder(
               cliLog(`⚠ ${file}: scanned document detected, retrying with OCR…`);
               result = await convertFile(file, plan.format, { ocr: { enabled: true, force: true } });
               usedOcr = true;
-            } catch (ocrErr: any) {
+            } catch (ocrErr) {
               if (isTesseractError(ocrErr)) {
                 cliWarn(`⚠ ${file}: OCR unavailable, keeping non-OCR result`);
               } else {
@@ -388,9 +389,9 @@ export async function convertFolder(
         ok++;
       } else {
         const reason = (results[j] as PromiseRejectedResult).reason;
-        cliError(`✗ ${batch[j].file}: ${reason?.message ?? reason}`);
+        cliError(`✗ ${batch[j].file}: ${errorMessage(reason)}`);
         fail++;
-        if (jsonMode) jsonResults.push({ success: false, input: batch[j].file, format, duration_ms: 0, error: reason?.message ?? String(reason) });
+        if (jsonMode) jsonResults.push({ success: false, input: batch[j].file, format, duration_ms: 0, error: errorMessage(reason) });
       }
     }
   }
@@ -433,10 +434,10 @@ export async function convertUrl(url: string, format: OutputFormat, outputDir?: 
     await writeOutput(outPath, formatted);
     const stats = getTokenStats(result.content);
     cliResult(`✓ ${url} → ${outPath} (${formatTokenStats(stats)})`);
-  } catch (err: any) {
+  } catch (err) {
     cliError(
       `✗ Failed to fetch '${url}'.\n` +
-      `  ${err.message ?? err}\n` +
+      `  ${errorMessage(err)}\n` +
       `  Tip: check the URL is correct and accessible.`
     );
     process.exit(1);
@@ -515,8 +516,8 @@ export async function convertStdin(
     await writeOutput(outPath, formatted);
     const stats = getTokenStats(content);
     cliResult(`✓ stdin → ${outPath} (${formatTokenStats(stats)})`);
-  } catch (err: any) {
-    cliError(`✗ stdin: ${err.message ?? err}`);
+  } catch (err) {
+    cliError(`✗ stdin: ${errorMessage(err)}`);
     if (isTesseractError(err)) {
       cliError(`  ${TESSERACT_INSTALL_HINT.replace(/\n/g, "\n  ")}`);
     }
