@@ -431,6 +431,7 @@ export function loadTemplates(): {
             format: currentFormat,
             description: currentDesc,
           });
+          currentName = null;
         }
         break;
       }

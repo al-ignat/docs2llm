@@ -37,3 +37,5 @@ export async function getFrontmostApplication(): Promise<{
 export function getPreferenceValues<T>(): T {
   return {} as T;
 }
+
+export const environment = { assetsPath: "/tmp/raycast/assets" };
