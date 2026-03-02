@@ -104,14 +104,19 @@ describe("validateUrl", () => {
     expect(() => validateUrl("http://[fd12::1]")).toThrow("private IP");
   });
 
-  // BUG: URL parser normalizes ::ffff:127.0.0.1 → ::ffff:7f00:1 (hex),
-  // bypassing the dotted-quad check in isPrivateIPv6. These tests document
-  // the current (broken) behavior. See SSRF bypass via IPv4-mapped IPv6.
-  test.todo("blocks IPv4-mapped IPv6 with private address (currently bypassed)", () => {
+  // IPv4-mapped IPv6: URL parser normalizes ::ffff:127.0.0.1 → ::ffff:7f00:1 (hex)
+  test("blocks IPv4-mapped IPv6 with private address (hex form)", () => {
     expect(() => validateUrl("http://[::ffff:127.0.0.1]")).toThrow("private IP");
   });
-  test.todo("blocks IPv4-mapped IPv6 with 10.x address (currently bypassed)", () => {
+  test("blocks IPv4-mapped IPv6 with 10.x address (hex form)", () => {
     expect(() => validateUrl("http://[::ffff:10.0.0.1]")).toThrow("private IP");
+  });
+  test("blocks IPv4-mapped IPv6 with 192.168.x address (hex form)", () => {
+    expect(() => validateUrl("http://[::ffff:192.168.1.1]")).toThrow("private IP");
+  });
+  test("allows IPv4-mapped IPv6 with public address", () => {
+    const url = validateUrl("http://[::ffff:8.8.8.8]");
+    expect(url.hostname).toBe("[::ffff:808:808]");
   });
 
   // --- Public IPs should pass ---
