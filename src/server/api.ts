@@ -1,5 +1,5 @@
 import { convertBytes, convertHtmlToMarkdown, isImageMime, isTesseractError, TESSERACT_INSTALL_HINT } from "../core/convert";
-import { errorMessage } from "../shared/errors";
+import { errorMessage, safeErrorMessage } from "../shared/errors";
 import { getTokenStats, checkLLMFit, formatLLMFit } from "../core/tokens";
 import { safeFetchBytes, MAX_INPUT_BYTES } from "../core/url-safe";
 import { convertMarkdownTo, sanitizePandocArgs, type OutboundFormat } from "../core/outbound";
@@ -105,14 +105,14 @@ async function handleConvert(req: Request): Promise<Response> {
           warning: "OCR unavailable (Tesseract not installed). Result may be incomplete for images.",
         });
       } catch (fallbackErr) {
-        return Response.json({ error: errorMessage(fallbackErr) }, { status: 500 });
+        return Response.json({ error: safeErrorMessage(fallbackErr) }, { status: 500 });
       }
     }
     // Explicit OCR requested by user: fail with install instructions
     if (isTesseractError(err)) {
       return Response.json({ error: TESSERACT_INSTALL_HINT }, { status: 500 });
     }
-    return Response.json({ error: errorMessage(err) }, { status: 500 });
+    return Response.json({ error: safeErrorMessage(err) }, { status: 500 });
   }
 }
 
@@ -169,7 +169,7 @@ async function handleConvertUrl(req: Request): Promise<Response> {
       fits: fits.map((f) => ({ name: f.name, limit: f.limit, fits: f.fits })),
     });
   } catch (err) {
-    return Response.json({ error: errorMessage(err) }, { status: 500 });
+    return Response.json({ error: safeErrorMessage(err) }, { status: 500 });
   }
 }
 
@@ -199,7 +199,7 @@ async function handleConvertClipboard(req: Request): Promise<Response> {
       fits: fits.map((f) => ({ name: f.name, limit: f.limit, fits: f.fits })),
     });
   } catch (err) {
-    return Response.json({ error: errorMessage(err) }, { status: 500 });
+    return Response.json({ error: safeErrorMessage(err) }, { status: 500 });
   }
 }
 
@@ -257,7 +257,7 @@ async function handleConvertOutbound(req: Request): Promise<Response> {
       },
     });
   } catch (err) {
-    return Response.json({ error: errorMessage(err) }, { status: 500 });
+    return Response.json({ error: safeErrorMessage(err) }, { status: 500 });
   } finally {
     try { unlinkSync(tmpIn); } catch {}
     if (outPath) try { unlinkSync(outPath); } catch {}
@@ -443,6 +443,29 @@ async function handleDeleteTemplate(name: string): Promise<Response> {
   return Response.json({ ok: true });
 }
 
+// Security headers applied to all responses
+const SECURITY_HEADERS: Record<string, string> = {
+  "X-Content-Type-Options": "nosniff",
+};
+
+// Additional headers for the HTML page (CSP, frame protection)
+// 'unsafe-inline' is necessary because ui.ts embeds all JS/CSS inline in a single HTML string.
+// Extracting to served files would require a static file server — overkill for a localhost-only dev tool.
+// The CSP still blocks eval, external scripts, framing, and object embeds.
+const HTML_SECURITY_HEADERS: Record<string, string> = {
+  ...SECURITY_HEADERS,
+  "X-Frame-Options": "DENY",
+  "Content-Security-Policy": "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'",
+};
+
+function withSecurityHeaders(response: Response, extra?: Record<string, string>): Response {
+  const headers = extra ?? SECURITY_HEADERS;
+  for (const [key, value] of Object.entries(headers)) {
+    response.headers.set(key, value);
+  }
+  return response;
+}
+
 export function startServer(port = 3000): { port: number; stop: () => void } {
   const server = Bun.serve({
     port,
@@ -452,55 +475,43 @@ export function startServer(port = 3000): { port: number; stop: () => void } {
       const url = new URL(req.url);
 
       if (url.pathname === "/" && req.method === "GET") {
-        return new Response(HTML, { headers: { "Content-Type": "text/html; charset=utf-8" } });
+        return withSecurityHeaders(
+          new Response(HTML, { headers: { "Content-Type": "text/html; charset=utf-8" } }),
+          HTML_SECURITY_HEADERS,
+        );
       }
+
+      // Route to handler
+      let response: Response | undefined;
 
       if (url.pathname === "/convert" && req.method === "POST") {
-        return await withConversionLimit(() => handleConvert(req));
-      }
-
-      if (url.pathname === "/convert/url" && req.method === "POST") {
-        return await withConversionLimit(() => handleConvertUrl(req));
-      }
-
-      if (url.pathname === "/convert/clipboard" && req.method === "POST") {
-        return await handleConvertClipboard(req);
-      }
-
-      if (url.pathname === "/formats" && req.method === "GET") {
-        return handleFormats();
-      }
-
-      // Outbound conversion
-      if (url.pathname === "/convert/outbound" && req.method === "POST") {
-        return await withConversionLimit(() => handleConvertOutbound(req));
-      }
-
-      // Template list
-      if (url.pathname === "/config/templates" && req.method === "GET") {
-        return handleGetTemplates();
-      }
-
-      // Template CRUD
-      if (url.pathname === "/config/templates" && req.method === "POST") {
-        return await handleCreateTemplate(req);
-      }
-
-      if (url.pathname.startsWith("/config/templates/") && req.method === "DELETE") {
+        response = await withConversionLimit(() => handleConvert(req));
+      } else if (url.pathname === "/convert/url" && req.method === "POST") {
+        response = await withConversionLimit(() => handleConvertUrl(req));
+      } else if (url.pathname === "/convert/clipboard" && req.method === "POST") {
+        response = await handleConvertClipboard(req);
+      } else if (url.pathname === "/formats" && req.method === "GET") {
+        response = handleFormats();
+      } else if (url.pathname === "/convert/outbound" && req.method === "POST") {
+        response = await withConversionLimit(() => handleConvertOutbound(req));
+      } else if (url.pathname === "/config/templates" && req.method === "GET") {
+        response = handleGetTemplates();
+      } else if (url.pathname === "/config/templates" && req.method === "POST") {
+        response = await handleCreateTemplate(req);
+      } else if (url.pathname.startsWith("/config/templates/") && req.method === "DELETE") {
         const tplName = decodeURIComponent(url.pathname.slice("/config/templates/".length));
-        return await handleDeleteTemplate(tplName);
+        response = await handleDeleteTemplate(tplName);
+      } else if (url.pathname === "/config" && req.method === "GET") {
+        response = handleGetConfig();
+      } else if (url.pathname === "/config" && req.method === "PUT") {
+        response = await handlePutConfig(req);
       }
 
-      // Config
-      if (url.pathname === "/config" && req.method === "GET") {
-        return handleGetConfig();
+      if (!response) {
+        response = Response.json({ error: "Not found" }, { status: 404 });
       }
 
-      if (url.pathname === "/config" && req.method === "PUT") {
-        return await handlePutConfig(req);
-      }
-
-      return Response.json({ error: "Not found" }, { status: 404 });
+      return withSecurityHeaders(response);
     },
   });
 
