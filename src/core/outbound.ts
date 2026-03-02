@@ -29,6 +29,8 @@ const ALLOWED_PANDOC_FLAGS = new Set([
   "-M", "--metadata",
   "--dpi",
   "--eol",
+  // --resource-path and --embed-resources are safe: this is a local tool,
+  // args come from the user's own config, and are validated by sanitizePandocArgs at write time.
   "--resource-path",
   "--section-divs",
   "--number-offset",
@@ -36,7 +38,8 @@ const ALLOWED_PANDOC_FLAGS = new Set([
   "--title-prefix",
   "--email-obfuscation",
   "--self-contained",
-  "--embed-resources",
+  "--embed-resources", // see --resource-path comment above
+
   "--mathml", "--mathjax", "--katex",
   "--gladtex", "--webtex",
   "--top-level-division",

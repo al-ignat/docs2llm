@@ -267,7 +267,7 @@ export function formatOutput(
 
   // Rich structured output with token stats
   const words = countWords(content);
-  const tokens = estimateTokens(content);
+  const tokens = estimateTokens(content, words);
 
   const data: Record<string, unknown> = {
     source: source,

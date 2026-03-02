@@ -1,11 +1,11 @@
-import { resolve } from "path";
-import { existsSync } from "fs";
+import { resolve, join, basename } from "path";
+import { existsSync, readdirSync } from "fs";
 import { createInterface } from "readline";
-import { convertFile, convertFileWithSmartOcr, formatOutput, isTesseractError, TESSERACT_INSTALL_HINT, type OutputFormat, type OcrOptions } from "../core/convert";
+import { convertFile, convertFileWithSmartOcr, convertBytes, formatOutput, isTesseractError, TESSERACT_INSTALL_HINT, type OutputFormat, type OcrOptions } from "../core/convert";
 import { writeOutput } from "../core/output";
 import { buildPlan, ValidationError } from "../core/validate";
 import { buildPandocArgs, type Config } from "../core/config";
-import { getTokenStats, formatTokenStats } from "../core/tokens";
+import { getTokenStats, formatTokenStats, splitToFit } from "../core/tokens";
 import { fetchAndConvert } from "../core/fetch";
 import { errorMessage } from "../shared/errors";
 import { MAX_INPUT_BYTES } from "../core/url-safe";
@@ -34,7 +34,7 @@ function cliLog(msg: string) {
   if (!quietMode && !jsonMode) console.log(msg);
 }
 function cliWarn(msg: string) {
-  if (!quietMode && !jsonMode) console.log(msg);
+  if (!quietMode && !jsonMode) console.warn(msg);
 }
 export function cliError(msg: string) {
   if (!jsonMode) console.error(msg);
@@ -164,7 +164,6 @@ export async function convertSingleFile(filePath: string, options: ConvertFileOp
 
       // --chunks mode: split and output as JSON
       if (chunks) {
-        const { splitToFit } = await import("../core/tokens");
         const targetSize = chunkSize || 4000;
         const splitResult = splitToFit(result.content, targetSize);
         const output = splitResult.parts.map((text, i) => ({
@@ -227,8 +226,6 @@ export async function convertSingleFile(filePath: string, options: ConvertFileOp
 export async function convertFolder(dir: string, options: ConvertFolderOptions) {
   const { format, outputDir, formatExplicit, force, cliPandocArgs, config, templateName, ocr } = options;
   const t0 = performance.now();
-  const { readdirSync } = await import("fs");
-  const { join, basename } = await import("path");
 
   const files = readdirSync(dir, { withFileTypes: true })
     .filter((e) => e.isFile() && !e.name.startsWith("."))
@@ -369,8 +366,6 @@ export async function convertFolder(dir: string, options: ConvertFolderOptions) 
 
 export async function convertUrl(url: string, options: ConvertUrlOptions) {
   const { format, outputDir, force, useStdout } = options;
-  const { basename: pathBasename } = await import("path");
-
   try {
     if (!useStdout) cliLog(`Fetching ${url}…`);
     const result = await fetchAndConvert(url);
@@ -383,7 +378,7 @@ export async function convertUrl(url: string, options: ConvertUrlOptions) {
 
     // Derive a filename from the URL
     let urlPath = new URL(url).pathname.replace(/\/$/, "");
-    let name = pathBasename(urlPath) || "page";
+    let name = basename(urlPath) || "page";
     name = name.replace(/\.[^.]+$/, "");
     const ext = format === "json" ? ".json" : format === "yaml" ? ".yaml" : ".md";
     const outName = `${name}${ext}`;
@@ -409,7 +404,6 @@ export async function convertUrl(url: string, options: ConvertUrlOptions) {
 
 export async function convertStdin(options: ConvertStdinOptions) {
   const { format, useStdout, outputDir, force, ocr, chunks, chunkSize } = options;
-  const { convertBytes } = await import("../core/convert");
 
   // Read all of stdin as bytes with size limit
   const inputChunks: Uint8Array[] = [];
@@ -443,7 +437,6 @@ export async function convertStdin(options: ConvertStdinOptions) {
     const formatted = formatOutput(content, "stdin", mime, {}, format);
 
     if (chunks) {
-      const { splitToFit } = await import("../core/tokens");
       const targetSize = chunkSize || 4000;
       const splitResult = splitToFit(content, targetSize);
       const output = splitResult.parts.map((text, i) => ({

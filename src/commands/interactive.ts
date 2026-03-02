@@ -1,6 +1,6 @@
 import * as p from "@clack/prompts";
 import { resolve, extname, dirname, join, basename } from "path";
-import { statSync, existsSync, mkdirSync } from "fs";
+import { statSync, existsSync, mkdirSync, readdirSync } from "fs";
 import { homedir } from "os";
 import { convertFile, convertFileWithSmartOcr, looksLikeScannedPdf, isImageFile, isTesseractError, TESSERACT_INSTALL_HINT, type OutputFormat } from "../core/convert";
 import { writeOutput } from "../core/output";
@@ -457,8 +457,7 @@ async function convert(
       // Offer to shorten or split if too long for any model
       if (anyTooLong(fits)) {
         const target = smallestLimit(fits)!;
-        const { splitToFit: doSplit } = await import("../core/tokens");
-        const splitResult = doSplit(result.content, target.limit);
+        const splitResult = splitToFit(result.content, target.limit);
         const numParts = splitResult.parts.length;
 
         const action = await p.select({
@@ -477,10 +476,9 @@ async function convert(
           const newStats = getTokenStats(shortened);
           p.log.success(`Shortened to ~${newStats.tokens.toLocaleString()} tokens`);
         } else if (!p.isCancel(action) && action === "split") {
-          const { dirname: pathDirname, basename: pathBasename, extname: pathExtname } = await import("path");
-          const dir = pathDirname(plan.outputPath);
-          const base = pathBasename(plan.outputPath, pathExtname(plan.outputPath));
-          const ext = pathExtname(plan.outputPath);
+          const dir = dirname(plan.outputPath);
+          const base = basename(plan.outputPath, extname(plan.outputPath));
+          const ext = extname(plan.outputPath);
 
           for (let i = 0; i < splitResult.parts.length; i++) {
             const partPath = join(dir, `${base}-part-${i + 1}${ext}`);
@@ -504,9 +502,6 @@ async function convert(
 }
 
 async function convertUrlInteractive(url: string, config?: Config) {
-  const { basename: pathBasename } = await import("path");
-  const { resolve: pathResolve } = await import("path");
-
   const s = p.spinner();
   s.start(`Fetching ${url}…`);
 
@@ -515,9 +510,9 @@ async function convertUrlInteractive(url: string, config?: Config) {
 
     // Derive output filename from URL
     let urlPath = new URL(url).pathname.replace(/\/$/, "");
-    let name = pathBasename(urlPath) || "page";
+    let name = basename(urlPath) || "page";
     name = name.replace(/\.[^.]+$/, "");
-    const outPath = pathResolve(`${name}.md`);
+    const outPath = resolve(`${name}.md`);
 
     if (existsSync(outPath)) {
       s.stop("File already exists");
@@ -543,11 +538,8 @@ async function convertUrlInteractive(url: string, config?: Config) {
 }
 
 async function convertBatchInteractive(dir: string, config?: Config) {
-  const { readdirSync, statSync: fStatSync } = await import("fs");
-  const { join, extname: pathExtname } = await import("path");
-
   const files = readdirSync(dir, { withFileTypes: true })
-    .filter((e) => e.isFile() && !e.name.startsWith(".") && INBOUND_ONLY_EXTS.has(pathExtname(e.name).toLowerCase()))
+    .filter((e) => e.isFile() && !e.name.startsWith(".") && INBOUND_ONLY_EXTS.has(extname(e.name).toLowerCase()))
     .map((e) => join(dir, e.name));
 
   if (files.length === 0) {
@@ -573,22 +565,34 @@ async function convertBatchInteractive(dir: string, config?: Config) {
   let fail = 0;
   let ocr = 0;
   let totalTokens = 0;
-  for (const file of files) {
-    const name = basename(file);
-    try {
-      const smartResult = await convertFileWithSmartOcr(file, "md");
 
-      const outName = name.replace(/\.[^.]+$/, "") + ".md";
-      const outPath = join(dirname(file), outName);
-      await writeOutput(outPath, smartResult.formatted);
-      const stats = getTokenStats(smartResult.content);
-      totalTokens += stats.tokens;
-      bar.advance(1, `${name} → ${outName} (${formatTokenStats(stats)})`);
-      ok++;
-      if (smartResult.usedOcr) ocr++;
-    } catch (err) {
-      bar.advance(1, `${name}: failed`);
-      fail++;
+  const BATCH_SIZE = 4;
+  for (let i = 0; i < files.length; i += BATCH_SIZE) {
+    const batch = files.slice(i, i + BATCH_SIZE);
+    const results = await Promise.allSettled(
+      batch.map(async (file) => {
+        const name = basename(file);
+        const smartResult = await convertFileWithSmartOcr(file, "md");
+        const outName = name.replace(/\.[^.]+$/, "") + ".md";
+        const outPath = join(dirname(file), outName);
+        await writeOutput(outPath, smartResult.formatted);
+        const stats = getTokenStats(smartResult.content);
+        return { name, outName, stats, usedOcr: smartResult.usedOcr };
+      })
+    );
+
+    for (let j = 0; j < results.length; j++) {
+      const result = results[j];
+      if (result.status === "fulfilled") {
+        const { name, outName, stats, usedOcr } = result.value;
+        totalTokens += stats.tokens;
+        bar.advance(1, `${name} → ${outName} (${formatTokenStats(stats)})`);
+        ok++;
+        if (usedOcr) ocr++;
+      } else {
+        bar.advance(1, `${basename(batch[j])}: failed`);
+        fail++;
+      }
     }
   }
 

@@ -7,7 +7,7 @@ import { convertFile, convertHtmlToMarkdown, isTesseractError, TESSERACT_INSTALL
 import { convertMarkdownTo, type OutboundFormat } from "../core/outbound";
 import { fetchAndConvert } from "../core/fetch";
 import { getTokenStats } from "../core/tokens";
-import { loadConfig, serializeConfig } from "../core/config";
+import { loadConfig, buildPandocArgs, serializeConfig } from "../core/config";
 import { INBOUND_ONLY_EXTS } from "../core/scan";
 import { errorMessage } from "../shared/errors";
 
@@ -123,7 +123,6 @@ export async function startMcpServer() {
         let pandocArgs: string[] | undefined;
         if (templateName) {
           const config = loadConfig();
-          const { buildPandocArgs } = await import("../core/config");
           pandocArgs = buildPandocArgs(format as OutboundFormat, config, templateName);
         }
 
