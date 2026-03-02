@@ -48,7 +48,7 @@ const ALLOWED_PANDOC_FLAGS = new Set([
   "--list-tables",
 ]);
 
-function sanitizePandocArgs(args: string[]): void {
+export function sanitizePandocArgs(args: string[]): void {
   for (const arg of args) {
     // Skip positional values (non-flag arguments that follow a flag)
     if (!arg.startsWith("-")) continue;

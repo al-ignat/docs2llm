@@ -2,7 +2,7 @@ import { convertBytes, convertHtmlToMarkdown, isImageMime, isTesseractError, TES
 import { errorMessage } from "../shared/errors";
 import { getTokenStats, checkLLMFit, formatLLMFit } from "../core/tokens";
 import { safeFetchBytes, MAX_INPUT_BYTES } from "../core/url-safe";
-import { convertMarkdownTo, type OutboundFormat } from "../core/outbound";
+import { convertMarkdownTo, sanitizePandocArgs, type OutboundFormat } from "../core/outbound";
 import {
   loadConfig,
   buildPandocArgs,
@@ -29,7 +29,8 @@ async function handleConvert(req: Request): Promise<Response> {
   } catch {
     return Response.json({ error: "Invalid request. Send multipart/form-data with a 'file' field." }, { status: 400 });
   }
-  const file = formData.get("file") as File | null;
+  const fileField = formData.get("file");
+  const file = fileField instanceof File ? fileField : null;
   if (!file) {
     return Response.json({ error: "No file uploaded. Send a 'file' field." }, { status: 400 });
   }
@@ -39,9 +40,11 @@ async function handleConvert(req: Request): Promise<Response> {
   const mime = rawMime.split(";")[0].trim();
 
   // Check for OCR options in form data
-  const ocrEnabled = formData.get("ocr") === "true" || formData.get("ocr") === "1";
-  const ocrForce = formData.get("ocr") === "force";
-  const ocrLang = formData.get("ocr_lang") as string | null;
+  const ocrRaw = formData.get("ocr");
+  const ocrEnabled = ocrRaw === "true" || ocrRaw === "1";
+  const ocrForce = ocrRaw === "force";
+  const ocrLangRaw = formData.get("ocr_lang");
+  const ocrLang = typeof ocrLangRaw === "string" ? ocrLangRaw : null;
   // Auto-enable OCR for images
   const isImage = isImageMime(mime);
   const ocrOpts = (ocrEnabled || ocrForce || ocrLang)
@@ -201,9 +204,12 @@ async function handleConvertOutbound(req: Request): Promise<Response> {
     return Response.json({ error: "Invalid request. Send multipart/form-data." }, { status: 400 });
   }
 
-  const file = formData.get("file") as File | null;
-  const format = formData.get("format") as string | null;
-  const templateName = (formData.get("template") as string | null) || undefined;
+  const fileField2 = formData.get("file");
+  const file = fileField2 instanceof File ? fileField2 : null;
+  const formatRaw = formData.get("format");
+  const format = typeof formatRaw === "string" ? formatRaw : null;
+  const templateRaw = formData.get("template");
+  const templateName = (typeof templateRaw === "string" ? templateRaw : null) || undefined;
 
   if (!file) return Response.json({ error: "No file uploaded." }, { status: 400 });
   if (!format || !["docx", "pptx", "html"].includes(format)) {
@@ -215,7 +221,7 @@ async function handleConvertOutbound(req: Request): Promise<Response> {
   let outPath: string | undefined;
 
   try {
-    await Bun.write(tmpIn, new Uint8Array(await file.arrayBuffer()));
+    await Bun.write(tmpIn, file);
 
     const config = loadConfig();
     const pandocArgs = buildPandocArgs(outFormat, config, templateName);
@@ -259,6 +265,25 @@ async function handlePutConfig(req: Request): Promise<Response> {
     return Response.json({ error: "Invalid JSON body." }, { status: 400 });
   }
 
+  // Validate Pandoc args at write time
+  if (body.pandoc) {
+    try {
+      for (const args of Object.values(body.pandoc)) {
+        if (Array.isArray(args)) sanitizePandocArgs(args);
+      }
+    } catch (err) {
+      return Response.json({ error: errorMessage(err) }, { status: 400 });
+    }
+  }
+
+  // Validate outputDir — reject dangerous paths
+  if (body.defaults?.outputDir) {
+    const dir = body.defaults.outputDir;
+    if (dir.includes("\0") || /^\/(etc|proc|sys|dev)\//.test(dir)) {
+      return Response.json({ error: "Invalid output directory path." }, { status: 400 });
+    }
+  }
+
   const targetPath = GLOBAL_CONFIG_PATH;
   const existing = parseConfigFile(targetPath);
 
@@ -300,11 +325,16 @@ async function handleCreateTemplate(req: Request): Promise<Response> {
     return Response.json({ error: "Invalid request. Send multipart/form-data." }, { status: 400 });
   }
 
-  const name = (formData.get("name") as string)?.trim();
-  const format = formData.get("format") as string;
-  const description = (formData.get("description") as string)?.trim() || undefined;
-  const featuresRaw = formData.get("features") as string | null;
-  const referenceFile = formData.get("referenceFile") as File | null;
+  const nameRaw = formData.get("name");
+  const name = typeof nameRaw === "string" ? nameRaw.trim() : "";
+  const formatRaw2 = formData.get("format");
+  const format = typeof formatRaw2 === "string" ? formatRaw2 : "";
+  const descRaw = formData.get("description");
+  const description = (typeof descRaw === "string" ? descRaw.trim() : "") || undefined;
+  const featuresField = formData.get("features");
+  const featuresRaw = typeof featuresField === "string" ? featuresField : null;
+  const refField = formData.get("referenceFile");
+  const referenceFile = refField instanceof File ? refField : null;
 
   if (!name || !/^[a-zA-Z0-9][a-zA-Z0-9-]*$/.test(name)) {
     return Response.json({ error: "Invalid template name. Use alphanumeric and hyphens, starting with a letter or number." }, { status: 400 });
@@ -333,8 +363,17 @@ async function handleCreateTemplate(req: Request): Promise<Response> {
   const targetPath = findLocalConfig() ?? LOCAL_CONFIG_NAME;
   const existing = parseConfigFile(targetPath);
 
+  // Validate Pandoc args at write time
+  if (pandocArgs.length) {
+    try {
+      sanitizePandocArgs(pandocArgs);
+    } catch (err) {
+      return Response.json({ error: errorMessage(err) }, { status: 400 });
+    }
+  }
+
   const tplConfig: TemplateConfig = {
-    format: format as any,
+    format: format as OutboundFormat,
     ...(pandocArgs.length ? { pandocArgs } : {}),
     ...(description ? { description } : {}),
   };
