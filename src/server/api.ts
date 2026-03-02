@@ -22,6 +22,25 @@ import { MIME_MAP, guessMime } from "../core/mime";
 
 const SUPPORTED_FORMATS = Object.entries(MIME_MAP).map(([ext, mime]) => ({ ext, mime }));
 
+// --- Concurrency limiter for heavy conversion endpoints ---
+let activeConversions = 0;
+const MAX_CONCURRENT_CONVERSIONS = 3;
+
+async function withConversionLimit<T>(fn: () => Promise<T>): Promise<T | Response> {
+  if (activeConversions >= MAX_CONCURRENT_CONVERSIONS) {
+    return Response.json(
+      { error: "Server busy. Too many concurrent conversions." },
+      { status: 429 }
+    );
+  }
+  activeConversions++;
+  try {
+    return await fn();
+  } finally {
+    activeConversions--;
+  }
+}
+
 async function handleConvert(req: Request): Promise<Response> {
   let formData: FormData;
   try {
@@ -437,11 +456,11 @@ export function startServer(port = 3000): { port: number; stop: () => void } {
       }
 
       if (url.pathname === "/convert" && req.method === "POST") {
-        return await handleConvert(req);
+        return await withConversionLimit(() => handleConvert(req));
       }
 
       if (url.pathname === "/convert/url" && req.method === "POST") {
-        return await handleConvertUrl(req);
+        return await withConversionLimit(() => handleConvertUrl(req));
       }
 
       if (url.pathname === "/convert/clipboard" && req.method === "POST") {
@@ -454,7 +473,7 @@ export function startServer(port = 3000): { port: number; stop: () => void } {
 
       // Outbound conversion
       if (url.pathname === "/convert/outbound" && req.method === "POST") {
-        return await handleConvertOutbound(req);
+        return await withConversionLimit(() => handleConvertOutbound(req));
       }
 
       // Template list
