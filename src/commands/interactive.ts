@@ -2,7 +2,7 @@ import * as p from "@clack/prompts";
 import { resolve, extname, dirname, join, basename } from "path";
 import { statSync, existsSync, mkdirSync } from "fs";
 import { homedir } from "os";
-import { convertFile, looksLikeScannedPdf, isImageFile, isTesseractError, TESSERACT_INSTALL_HINT, type OutputFormat } from "../core/convert";
+import { convertFile, convertFileWithSmartOcr, looksLikeScannedPdf, isImageFile, isTesseractError, TESSERACT_INSTALL_HINT, type OutputFormat } from "../core/convert";
 import { writeOutput } from "../core/output";
 import { buildPlan, ValidationError } from "../core/validate";
 import { scanForFiles, formatHint, timeAgo, type FileInfo } from "../core/scan";
@@ -584,45 +584,16 @@ async function convertBatchInteractive(dir: string, config?: Config) {
   for (const file of files) {
     const name = basename(file);
     try {
-      // Auto-enable OCR for images
-      const isImg = isImageFile(file);
-      let result: Awaited<ReturnType<typeof convertFile>>;
-      let usedOcr = false;
-
-      if (isImg) {
-        try {
-          result = await convertFile(file, "md", { ocr: { enabled: true, force: true } });
-          usedOcr = true;
-        } catch (ocrErr) {
-          if (isTesseractError(ocrErr)) {
-            result = await convertFile(file, "md");
-          } else {
-            throw ocrErr;
-          }
-        }
-      } else {
-        result = await convertFile(file, "md");
-      }
-
-      // Auto-detect scanned PDFs and retry with OCR
-      if (!isImg && looksLikeScannedPdf(file, result.content)) {
-        try {
-          result = await convertFile(file, "md", { ocr: { enabled: true, force: true } });
-          usedOcr = true;
-        } catch (ocrErr) {
-          if (!isTesseractError(ocrErr)) throw ocrErr;
-          // Tesseract missing — keep non-OCR result silently
-        }
-      }
+      const smartResult = await convertFileWithSmartOcr(file, "md");
 
       const outName = name.replace(/\.[^.]+$/, "") + ".md";
       const outPath = join(dirname(file), outName);
-      await writeOutput(outPath, result.formatted);
-      const stats = getTokenStats(result.content);
+      await writeOutput(outPath, smartResult.formatted);
+      const stats = getTokenStats(smartResult.content);
       totalTokens += stats.tokens;
       bar.advance(1, `${name} → ${outName} (${formatTokenStats(stats)})`);
       ok++;
-      if (usedOcr) ocr++;
+      if (smartResult.usedOcr) ocr++;
     } catch (err) {
       bar.advance(1, `${name}: failed`);
       fail++;

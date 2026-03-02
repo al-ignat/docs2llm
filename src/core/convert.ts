@@ -150,6 +150,72 @@ export async function convertFile(
   };
 }
 
+// --- Smart OCR: auto-detect images and scanned PDFs ---
+
+export type SmartOcrWarning =
+  | "image_auto_ocr"
+  | "tesseract_missing_image"
+  | "tesseract_missing_scanned"
+  | "scanned_pdf_detected";
+
+export interface SmartOcrResult extends ConversionResult {
+  usedOcr: boolean;
+  warnings: SmartOcrWarning[];
+}
+
+/**
+ * Convert a file with automatic OCR detection.
+ * - Images: auto-enable OCR, fall back if Tesseract is missing.
+ * - PDFs: detect scanned pages, auto-retry with OCR.
+ * If the caller provides explicit OCR options, those are used as-is.
+ */
+export async function convertFileWithSmartOcr(
+  filePath: string,
+  format: OutputFormat,
+  options?: ConvertOptions,
+): Promise<SmartOcrResult> {
+  const explicitOcr = options?.ocr?.enabled;
+  const isImg = isImageFile(filePath);
+  const warnings: SmartOcrWarning[] = [];
+
+  // Image auto-OCR (early return path — images aren't PDFs, so no scanned check)
+  if (!explicitOcr && isImg) {
+    warnings.push("image_auto_ocr");
+    try {
+      const result = await convertFile(filePath, format, { ...options, ocr: { enabled: true, force: true } });
+      return { ...result, usedOcr: true, warnings };
+    } catch (err) {
+      if (isTesseractError(err)) {
+        warnings.push("tesseract_missing_image");
+        const result = await convertFile(filePath, format, options);
+        return { ...result, usedOcr: false, warnings };
+      }
+      throw err;
+    }
+  }
+
+  // Standard conversion
+  let result = await convertFile(filePath, format, options);
+  let usedOcr = !!explicitOcr;
+
+  // Scanned PDF detection + auto-retry
+  if (!explicitOcr && looksLikeScannedPdf(filePath, result.content)) {
+    warnings.push("scanned_pdf_detected");
+    try {
+      result = await convertFile(filePath, format, { ...options, ocr: { enabled: true, force: true } });
+      usedOcr = true;
+    } catch (err) {
+      if (isTesseractError(err)) {
+        warnings.push("tesseract_missing_scanned");
+      } else {
+        throw err;
+      }
+    }
+  }
+
+  return { ...result, usedOcr, warnings };
+}
+
 /** Check if extraction result looks like a scanned/empty PDF */
 export function looksLikeScannedPdf(filePath: string, content: string): boolean {
   const ext = extname(filePath).toLowerCase();
