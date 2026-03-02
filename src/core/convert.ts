@@ -35,47 +35,37 @@ interface ExtractionResult {
   qualityScore?: number | null;
 }
 
-let extractFileFn: ((path: string, mime: any, config?: any) => Promise<ExtractionResult>) | null = null;
-let usingWasm = false;
-
-async function getExtractFile() {
-  if (extractFileFn) return extractFileFn;
-
-  try {
-    const mod = await import("@kreuzberg/node");
-    extractFileFn = mod.extractFile;
-  } catch {
-    const wasm = await import("@kreuzberg/wasm");
-    await wasm.initWasm();
-    extractFileFn = wasm.extractFile;
-    usingWasm = true;
-  }
-  return extractFileFn!;
-}
-
+type ExtractFileFn = (path: string, mime: any, config?: any) => Promise<ExtractionResult>;
 type ExtractBytesFn = (data: Uint8Array, mimeType: string, config?: any) => Promise<ExtractionResult>;
-let extractBytesFn: ExtractBytesFn | null = null;
 
-async function getExtractBytes(): Promise<ExtractBytesFn> {
-  if (extractBytesFn) return extractBytesFn;
+interface KreuzbergModule {
+  extractFile: ExtractFileFn;
+  extractBytes: ExtractBytesFn;
+  isWasm: boolean;
+}
 
+let kreuzbergPromise: Promise<KreuzbergModule> | null = null;
+
+async function loadKreuzberg(): Promise<KreuzbergModule> {
   try {
     const mod = await import("@kreuzberg/node");
-    extractBytesFn = mod.extractBytes;
+    return { extractFile: mod.extractFile, extractBytes: mod.extractBytes, isWasm: false };
   } catch {
     const wasm = await import("@kreuzberg/wasm");
     await wasm.initWasm();
-    extractBytesFn = wasm.extractBytes;
-    usingWasm = true;
+    return { extractFile: wasm.extractFile, extractBytes: wasm.extractBytes, isWasm: true };
   }
-  return extractBytesFn!;
 }
 
-function getOcrBackend(): string {
-  return usingWasm ? "tesseract-wasm" : "tesseract";
+function getKreuzberg(): Promise<KreuzbergModule> {
+  if (!kreuzbergPromise) {
+    kreuzbergPromise = loadKreuzberg();
+  }
+  return kreuzbergPromise;
 }
 
-function buildExtractionConfig(ocr?: OcrOptions): Record<string, unknown> {
+
+function buildExtractionConfig(ocr: OcrOptions | undefined, isWasm: boolean): Record<string, unknown> {
   const config: Record<string, unknown> = {
     outputFormat: "markdown",
     enableQualityProcessing: true,
@@ -83,7 +73,7 @@ function buildExtractionConfig(ocr?: OcrOptions): Record<string, unknown> {
 
   if (ocr?.enabled || ocr?.force) {
     config.ocr = {
-      backend: getOcrBackend(),
+      backend: isWasm ? "tesseract-wasm" : "tesseract",
       ...(ocr.language ? { language: ocr.language } : {}),
     };
   }
@@ -100,14 +90,14 @@ export async function convertBytes(
   mimeType: string,
   ocr?: OcrOptions
 ): Promise<{ content: string; mimeType: string; metadata: Record<string, unknown>; qualityScore?: number | null }> {
-  const extractBytes = await getExtractBytes();
-  return extractBytes(data, mimeType, buildExtractionConfig(ocr));
+  const mod = await getKreuzberg();
+  return mod.extractBytes(data, mimeType, buildExtractionConfig(ocr, mod.isWasm));
 }
 
 export async function convertHtmlToMarkdown(html: string): Promise<string> {
-  const extractBytes = await getExtractBytes();
+  const mod = await getKreuzberg();
   const buffer = new TextEncoder().encode(html);
-  const result = await extractBytes(buffer, "text/html", {
+  const result = await mod.extractBytes(buffer, "text/html", {
     outputFormat: "markdown",
     htmlOptions: {
       preprocessing: {
@@ -144,9 +134,9 @@ export async function convertFile(
   }
 
   // Inbound: documents → text via Kreuzberg
-  const extract = await getExtractFile();
-  const config = buildExtractionConfig(options?.ocr);
-  const result = await extract(filePath, null, config);
+  const mod = await getKreuzberg();
+  const config = buildExtractionConfig(options?.ocr, mod.isWasm);
+  const result = await mod.extractFile(filePath, null, config);
 
   const textContent = result.content;
   const formatted = formatOutput(textContent, filePath, result.mimeType, result.metadata, format, result.qualityScore);
