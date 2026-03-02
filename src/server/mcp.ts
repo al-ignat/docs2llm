@@ -1,9 +1,14 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import { convertFile, convertBytes, isTesseractError, TESSERACT_INSTALL_HINT, type OcrOptions } from "../core/convert";
-import { fetchAndConvert } from "../commands/fetch";
+import { readdirSync } from "fs";
+import { join, extname } from "path";
+import { convertFile, convertHtmlToMarkdown, isTesseractError, TESSERACT_INSTALL_HINT, type OcrOptions } from "../core/convert";
+import { convertMarkdownTo, type OutboundFormat } from "../core/outbound";
+import { fetchAndConvert } from "../core/fetch";
 import { getTokenStats } from "../core/tokens";
+import { loadConfig, serializeConfig } from "../core/config";
+import { INBOUND_ONLY_EXTS } from "../core/scan";
 import { errorMessage } from "../shared/errors";
 
 export async function startMcpServer() {
@@ -99,6 +104,185 @@ export async function startMcpServer() {
       return {
         content: [{ type: "text", text: formats.join("\n") }],
       };
+    }
+  );
+
+  // --- New tools for feature parity ---
+
+  server.tool(
+    "convert_to_document",
+    "Convert a Markdown file to DOCX, PPTX, or HTML via Pandoc. Returns the output file path.",
+    {
+      inputPath: z.string().describe("Absolute path to the .md file to convert"),
+      format: z.enum(["docx", "pptx", "html"]).describe("Output format"),
+      outputDir: z.string().optional().describe("Directory for the output file (defaults to same as input)"),
+      templateName: z.string().optional().describe("Named template from config to use"),
+    },
+    async ({ inputPath, format, outputDir, templateName }) => {
+      try {
+        let pandocArgs: string[] | undefined;
+        if (templateName) {
+          const config = loadConfig();
+          const { buildPandocArgs } = await import("../core/config");
+          pandocArgs = buildPandocArgs(format as OutboundFormat, config, templateName);
+        }
+
+        const outPath = await convertMarkdownTo(
+          inputPath,
+          format as OutboundFormat,
+          outputDir,
+          pandocArgs,
+        );
+
+        return {
+          content: [{ type: "text", text: `Converted: ${inputPath} → ${outPath}` }],
+        };
+      } catch (err) {
+        return {
+          content: [{ type: "text", text: `Error: ${errorMessage(err)}` }],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  server.tool(
+    "convert_folder",
+    "Convert all documents in a directory to markdown. Returns a summary of results.",
+    {
+      dirPath: z.string().describe("Absolute path to the directory to convert"),
+      format: z.enum(["md", "json", "yaml"]).optional().describe("Output format (default: md)"),
+    },
+    async ({ dirPath, format: fmt }) => {
+      try {
+        const outFormat = fmt ?? "md";
+        const entries = readdirSync(dirPath, { withFileTypes: true });
+        const files = entries
+          .filter((e) => e.isFile() && !e.name.startsWith(".") && INBOUND_ONLY_EXTS.has(extname(e.name).toLowerCase()))
+          .map((e) => join(dirPath, e.name));
+
+        if (files.length === 0) {
+          return { content: [{ type: "text", text: "No convertible files found in directory." }] };
+        }
+        if (files.length > 100) {
+          return {
+            content: [{ type: "text", text: `Too many files (${files.length}). Maximum is 100 files per batch.` }],
+            isError: true,
+          };
+        }
+
+        const BATCH_SIZE = 4;
+        const results: string[] = [];
+        let ok = 0;
+        let fail = 0;
+
+        for (let i = 0; i < files.length; i += BATCH_SIZE) {
+          const batch = files.slice(i, i + BATCH_SIZE);
+          const settled = await Promise.allSettled(
+            batch.map(async (file) => {
+              const result = await convertFile(file, outFormat as any);
+              const stats = getTokenStats(result.content);
+              return `✓ ${file} (~${stats.tokens} tokens)`;
+            })
+          );
+
+          for (let j = 0; j < settled.length; j++) {
+            if (settled[j].status === "fulfilled") {
+              results.push((settled[j] as PromiseFulfilledResult<string>).value);
+              ok++;
+            } else {
+              results.push(`✗ ${batch[j]}: ${errorMessage((settled[j] as PromiseRejectedResult).reason)}`);
+              fail++;
+            }
+          }
+        }
+
+        const summary = `Converted ${ok}/${files.length} files (${fail} failed).\n\n${results.join("\n")}`;
+        return { content: [{ type: "text", text: summary }] };
+      } catch (err) {
+        return {
+          content: [{ type: "text", text: `Error: ${errorMessage(err)}` }],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  server.tool(
+    "convert_html",
+    "Convert an HTML string to clean Markdown text.",
+    {
+      html: z.string().describe("HTML content to convert to Markdown"),
+    },
+    async ({ html }) => {
+      try {
+        const content = await convertHtmlToMarkdown(html);
+        const stats = getTokenStats(content);
+
+        return {
+          content: [
+            { type: "text", text: `---\nWords: ${stats.words}\nTokens: ~${stats.tokens}\n---\n\n${content}` },
+          ],
+        };
+      } catch (err) {
+        return {
+          content: [{ type: "text", text: `Error converting HTML: ${errorMessage(err)}` }],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  server.tool(
+    "list_templates",
+    "List available named templates from docs2llm config.",
+    {},
+    async () => {
+      try {
+        const config = loadConfig();
+        const templates = config.templates;
+
+        if (!templates || Object.keys(templates).length === 0) {
+          return { content: [{ type: "text", text: "No templates configured." }] };
+        }
+
+        const lines = Object.entries(templates).map(([name, tpl]) => {
+          const parts = [`${name}: format=${tpl.format}`];
+          if (tpl.description) parts.push(tpl.description);
+          if (tpl.pandocArgs?.length) parts.push(`args: ${tpl.pandocArgs.join(" ")}`);
+          return parts.join(" — ");
+        });
+
+        return { content: [{ type: "text", text: lines.join("\n") }] };
+      } catch (err) {
+        return {
+          content: [{ type: "text", text: `Error loading templates: ${errorMessage(err)}` }],
+          isError: true,
+        };
+      }
+    }
+  );
+
+  server.tool(
+    "get_config",
+    "Get the current docs2llm configuration (merged global + local).",
+    {},
+    async () => {
+      try {
+        const config = loadConfig();
+        const yaml = serializeConfig(config);
+
+        if (!yaml.trim() || yaml.trim() === "{}") {
+          return { content: [{ type: "text", text: "No configuration found. Run `docs2llm init` to create one." }] };
+        }
+
+        return { content: [{ type: "text", text: yaml }] };
+      } catch (err) {
+        return {
+          content: [{ type: "text", text: `Error loading config: ${errorMessage(err)}` }],
+          isError: true,
+        };
+      }
     }
   );
 

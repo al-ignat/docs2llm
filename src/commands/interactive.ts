@@ -5,7 +5,7 @@ import { homedir } from "os";
 import { convertFile, convertFileWithSmartOcr, looksLikeScannedPdf, isImageFile, isTesseractError, TESSERACT_INSTALL_HINT, type OutputFormat } from "../core/convert";
 import { writeOutput } from "../core/output";
 import { buildPlan, ValidationError } from "../core/validate";
-import { scanForFiles, formatHint, timeAgo, type FileInfo } from "../core/scan";
+import { scanForFiles, formatHint, timeAgo, INBOUND_ONLY_EXTS, type FileInfo } from "../core/scan";
 import { buildPandocArgs, findLocalConfig, GLOBAL_CONFIG_PATH, type Config } from "../core/config";
 import { writeClipboard } from "../core/clipboard";
 import { guard } from "../shared/wizard-utils";
@@ -21,7 +21,7 @@ import {
   splitToFit,
   estimateTokens,
 } from "../core/tokens";
-import { fetchAndConvert } from "./fetch";
+import { fetchAndConvert } from "../core/fetch";
 import { errorMessage } from "../shared/errors";
 
 export type FormatChoice =
@@ -546,16 +546,8 @@ async function convertBatchInteractive(dir: string, config?: Config) {
   const { readdirSync, statSync: fStatSync } = await import("fs");
   const { join, extname: pathExtname } = await import("path");
 
-  const CONVERTIBLE_EXTS = new Set([
-    ".docx", ".doc", ".pdf", ".pptx", ".ppt",
-    ".xlsx", ".xls", ".odt", ".odp", ".ods",
-    ".rtf", ".epub", ".mobi", ".eml", ".msg",
-    ".csv", ".tsv", ".html", ".xml", ".txt",
-    ".png", ".jpg", ".jpeg", ".tiff", ".bmp", ".gif", ".webp",
-  ]);
-
   const files = readdirSync(dir, { withFileTypes: true })
-    .filter((e) => e.isFile() && !e.name.startsWith(".") && CONVERTIBLE_EXTS.has(pathExtname(e.name).toLowerCase()))
+    .filter((e) => e.isFile() && !e.name.startsWith(".") && INBOUND_ONLY_EXTS.has(pathExtname(e.name).toLowerCase()))
     .map((e) => join(dir, e.name));
 
   if (files.length === 0) {

@@ -6,8 +6,10 @@ import { writeOutput } from "../core/output";
 import { buildPlan, ValidationError } from "../core/validate";
 import { buildPandocArgs, type Config } from "../core/config";
 import { getTokenStats, formatTokenStats } from "../core/tokens";
-import { fetchAndConvert } from "./fetch";
+import { fetchAndConvert } from "../core/fetch";
 import { errorMessage } from "../shared/errors";
+import { MAX_INPUT_BYTES } from "../core/url-safe";
+import { detectMimeFromBytes } from "../core/mime";
 
 function confirm(prompt: string): Promise<boolean> {
   return new Promise((resolve) => {
@@ -52,20 +54,50 @@ interface ConversionResult {
   error?: string;
 }
 
-export async function convertSingleFile(
-  filePath: string,
-  format: OutputFormat,
-  outputDir?: string,
-  formatExplicit?: boolean,
-  force?: boolean,
-  cliPandocArgs?: string[],
-  config?: Config,
-  templateName?: string | null,
-  ocr?: OcrOptions,
-  useStdout?: boolean,
-  chunks?: boolean,
-  chunkSize?: number | null,
-) {
+export interface ConvertFileOptions {
+  format: OutputFormat;
+  outputDir?: string;
+  formatExplicit?: boolean;
+  force?: boolean;
+  cliPandocArgs?: string[];
+  config?: Config;
+  templateName?: string | null;
+  ocr?: OcrOptions;
+  useStdout?: boolean;
+  chunks?: boolean;
+  chunkSize?: number | null;
+}
+
+export interface ConvertFolderOptions {
+  format: OutputFormat;
+  outputDir?: string;
+  formatExplicit?: boolean;
+  force?: boolean;
+  cliPandocArgs?: string[];
+  config?: Config;
+  templateName?: string | null;
+  ocr?: OcrOptions;
+}
+
+export interface ConvertUrlOptions {
+  format: OutputFormat;
+  outputDir?: string;
+  force?: boolean;
+  useStdout?: boolean;
+}
+
+export interface ConvertStdinOptions {
+  format: OutputFormat;
+  useStdout: boolean;
+  outputDir?: string;
+  force?: boolean;
+  ocr?: OcrOptions;
+  chunks?: boolean;
+  chunkSize?: number | null;
+}
+
+export async function convertSingleFile(filePath: string, options: ConvertFileOptions) {
+  const { format, outputDir, formatExplicit, force, cliPandocArgs, config, templateName, ocr, useStdout, chunks, chunkSize } = options;
   const t0 = performance.now();
   let plan;
   try {
@@ -192,17 +224,8 @@ export async function convertSingleFile(
   }
 }
 
-export async function convertFolder(
-  dir: string,
-  format: OutputFormat,
-  outputDir?: string,
-  formatExplicit?: boolean,
-  force?: boolean,
-  cliPandocArgs?: string[],
-  config?: Config,
-  templateName?: string | null,
-  ocr?: OcrOptions
-) {
+export async function convertFolder(dir: string, options: ConvertFolderOptions) {
+  const { format, outputDir, formatExplicit, force, cliPandocArgs, config, templateName, ocr } = options;
   const t0 = performance.now();
   const { readdirSync } = await import("fs");
   const { join, basename } = await import("path");
@@ -344,7 +367,8 @@ export async function convertFolder(
   }
 }
 
-export async function convertUrl(url: string, format: OutputFormat, outputDir?: string, force?: boolean, useStdout?: boolean) {
+export async function convertUrl(url: string, options: ConvertUrlOptions) {
+  const { format, outputDir, force, useStdout } = options;
   const { basename: pathBasename } = await import("path");
 
   try {
@@ -383,17 +407,8 @@ export async function convertUrl(url: string, format: OutputFormat, outputDir?: 
   }
 }
 
-const MAX_STDIN_BYTES = 100 * 1024 * 1024; // 100 MB
-
-export async function convertStdin(
-  format: OutputFormat,
-  useStdout: boolean,
-  outputDir?: string,
-  force?: boolean,
-  ocr?: OcrOptions,
-  chunks?: boolean,
-  chunkSize?: number | null,
-) {
+export async function convertStdin(options: ConvertStdinOptions) {
+  const { format, useStdout, outputDir, force, ocr, chunks, chunkSize } = options;
   const { convertBytes } = await import("../core/convert");
 
   // Read all of stdin as bytes with size limit
@@ -401,8 +416,8 @@ export async function convertStdin(
   let totalLength = 0;
   for await (const chunk of Bun.stdin.stream()) {
     totalLength += chunk.length;
-    if (totalLength > MAX_STDIN_BYTES) {
-      cliError(`✗ stdin input exceeds ${MAX_STDIN_BYTES / (1024 * 1024)} MB size limit.`);
+    if (totalLength > MAX_INPUT_BYTES) {
+      cliError(`✗ stdin input exceeds ${MAX_INPUT_BYTES / (1024 * 1024)} MB size limit.`);
       process.exit(1);
     }
     inputChunks.push(chunk);
@@ -464,39 +479,3 @@ export async function convertStdin(
   }
 }
 
-function detectMimeFromBytes(data: Uint8Array): string {
-  // PDF: %PDF
-  if (data[0] === 0x25 && data[1] === 0x50 && data[2] === 0x44 && data[3] === 0x46) {
-    return "application/pdf";
-  }
-  // ZIP-based (docx, pptx, xlsx, epub, odt): PK\x03\x04
-  if (data[0] === 0x50 && data[1] === 0x4b && data[2] === 0x03 && data[3] === 0x04) {
-    // Scan ZIP local file headers for characteristic paths to identify the format
-    const text = new TextDecoder("ascii", { fatal: false }).decode(data.subarray(0, Math.min(data.length, 8192)));
-    if (text.includes("word/document.xml")) return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
-    if (text.includes("ppt/presentation.xml")) return "application/vnd.openxmlformats-officedocument.presentationml.presentation";
-    if (text.includes("xl/workbook.xml")) return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-    if (text.includes("META-INF/container.xml")) return "application/epub+zip";
-    if (text.includes("mimetype")) return "application/zip"; // ODF — let Kreuzberg refine
-    return "application/zip";
-  }
-  // PNG
-  if (data[0] === 0x89 && data[1] === 0x50 && data[2] === 0x4e && data[3] === 0x47) {
-    return "image/png";
-  }
-  // JPEG
-  if (data[0] === 0xff && data[1] === 0xd8 && data[2] === 0xff) {
-    return "image/jpeg";
-  }
-  // GIF
-  if (data[0] === 0x47 && data[1] === 0x49 && data[2] === 0x46) {
-    return "image/gif";
-  }
-  // Try as text/HTML
-  const head = new TextDecoder().decode(data.slice(0, 256)).trim();
-  if (head.startsWith("<!") || head.startsWith("<html") || head.startsWith("<HTML")) {
-    return "text/html";
-  }
-  // Default to plain text
-  return "text/plain";
-}

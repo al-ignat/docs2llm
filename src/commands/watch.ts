@@ -5,14 +5,7 @@ import { convertFile } from "../core/convert";
 import { writeOutput } from "../core/output";
 import { getTokenStats, formatTokenStats } from "../core/tokens";
 import { errorMessage } from "../shared/errors";
-
-const CONVERTIBLE_EXTS = new Set([
-  ".docx", ".doc", ".pdf", ".pptx", ".ppt",
-  ".xlsx", ".xls", ".odt", ".odp", ".ods",
-  ".rtf", ".epub", ".mobi", ".eml", ".msg",
-  ".csv", ".tsv", ".html", ".xml", ".txt",
-  ".png", ".jpg", ".jpeg", ".tiff", ".bmp", ".gif", ".webp",
-]);
+import { INBOUND_ONLY_EXTS } from "../core/scan";
 
 export function startWatcher(inputDir: string, outputDir: string): void {
   if (!existsSync(inputDir)) {
@@ -29,7 +22,7 @@ export function startWatcher(inputDir: string, outputDir: string): void {
   fsWatch(inputDir, { recursive: true }, async (eventType, filename) => {
     if (!filename || filename.startsWith(".")) return;
     const ext = extname(filename).toLowerCase();
-    if (!CONVERTIBLE_EXTS.has(ext)) return;
+    if (!INBOUND_ONLY_EXTS.has(ext)) return;
 
     const filePath = join(inputDir, filename);
 

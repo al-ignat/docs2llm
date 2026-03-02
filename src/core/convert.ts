@@ -2,10 +2,9 @@ import { stringify as yamlStringify } from "yaml";
 import { extname } from "path";
 import { convertMarkdownTo, type OutboundFormat } from "./outbound";
 import { countWords, estimateTokens } from "./tokens";
+import { OUTBOUND_FORMATS } from "./validate";
 
 export type OutputFormat = "md" | "json" | "yaml" | "docx" | "pptx" | "html";
-
-const OUTBOUND_FORMATS = new Set<string>(["docx", "pptx", "html"]);
 
 export interface OcrOptions {
   enabled?: boolean;

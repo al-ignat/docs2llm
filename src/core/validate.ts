@@ -4,7 +4,7 @@ import type { OutputFormat } from "./convert";
 
 export type ConversionDirection = "inbound" | "outbound";
 
-const OUTBOUND_FORMATS = new Set<string>(["docx", "pptx", "html"]);
+export const OUTBOUND_FORMATS = new Set<string>(["docx", "pptx", "html"]);
 
 export interface ConversionPlan {
   direction: ConversionDirection;
