@@ -2,7 +2,7 @@ import * as p from "@clack/prompts";
 import { resolve, extname, dirname, join, basename } from "path";
 import { statSync, existsSync, mkdirSync } from "fs";
 import { homedir } from "os";
-import { convertFile, looksLikeScannedPdf, isImageFile, isTesseractError, TESSERACT_INSTALL_HINT, type OutputFormat } from "../core/convert";
+import { convertFile, convertFileWithSmartOcr, looksLikeScannedPdf, isImageFile, isTesseractError, TESSERACT_INSTALL_HINT, type OutputFormat } from "../core/convert";
 import { writeOutput } from "../core/output";
 import { buildPlan, ValidationError } from "../core/validate";
 import { scanForFiles, formatHint, timeAgo, type FileInfo } from "../core/scan";
@@ -22,6 +22,7 @@ import {
   estimateTokens,
 } from "../core/tokens";
 import { fetchAndConvert } from "./fetch";
+import { errorMessage } from "../shared/errors";
 
 export type FormatChoice =
   | { kind: "format"; format: OutputFormat }
@@ -346,7 +347,7 @@ async function convert(
       formatExplicit: true,
       defaultMdFormat: config?.defaults?.format,
     });
-  } catch (err: any) {
+  } catch (err) {
     if (err instanceof ValidationError) {
       p.log.error(err.message);
       return;
@@ -400,7 +401,7 @@ async function convert(
       if (isImg) {
         try {
           result = await convertFile(filePath, plan.format, { ocr: { enabled: true, force: true } });
-        } catch (ocrErr: any) {
+        } catch (ocrErr) {
           if (isTesseractError(ocrErr)) {
             p.log.warn("OCR unavailable (Tesseract not installed). Converting without OCR…");
             result = await convertFile(filePath, plan.format);
@@ -423,7 +424,7 @@ async function convert(
           s.start("Running OCR…");
           try {
             result = await convertFile(filePath, plan.format, { ocr: { enabled: true, force: true } });
-          } catch (ocrErr: any) {
+          } catch (ocrErr) {
             if (isTesseractError(ocrErr)) {
               s.stop("OCR failed");
               p.log.error(TESSERACT_INSTALL_HINT);
@@ -492,9 +493,9 @@ async function convert(
         }
       }
     }
-  } catch (err: any) {
+  } catch (err) {
     s.error("Conversion failed.");
-    p.log.error(err.message ?? String(err));
+    p.log.error(errorMessage(err));
     return;
   }
 
@@ -535,9 +536,9 @@ async function convertUrlInteractive(url: string, config?: Config) {
     s.stop(`${url} → ${outPath} (${formatTokenStats(stats)})`);
 
     await postConversionMenu(outPath, result.content);
-  } catch (err: any) {
+  } catch (err) {
     s.error("Fetch failed.");
-    p.log.error(err.message ?? String(err));
+    p.log.error(errorMessage(err));
   }
 }
 
@@ -583,46 +584,17 @@ async function convertBatchInteractive(dir: string, config?: Config) {
   for (const file of files) {
     const name = basename(file);
     try {
-      // Auto-enable OCR for images
-      const isImg = isImageFile(file);
-      let result: Awaited<ReturnType<typeof convertFile>>;
-      let usedOcr = false;
-
-      if (isImg) {
-        try {
-          result = await convertFile(file, "md", { ocr: { enabled: true, force: true } });
-          usedOcr = true;
-        } catch (ocrErr: any) {
-          if (isTesseractError(ocrErr)) {
-            result = await convertFile(file, "md");
-          } else {
-            throw ocrErr;
-          }
-        }
-      } else {
-        result = await convertFile(file, "md");
-      }
-
-      // Auto-detect scanned PDFs and retry with OCR
-      if (!isImg && looksLikeScannedPdf(file, result.content)) {
-        try {
-          result = await convertFile(file, "md", { ocr: { enabled: true, force: true } });
-          usedOcr = true;
-        } catch (ocrErr: any) {
-          if (!isTesseractError(ocrErr)) throw ocrErr;
-          // Tesseract missing — keep non-OCR result silently
-        }
-      }
+      const smartResult = await convertFileWithSmartOcr(file, "md");
 
       const outName = name.replace(/\.[^.]+$/, "") + ".md";
       const outPath = join(dirname(file), outName);
-      await writeOutput(outPath, result.formatted);
-      const stats = getTokenStats(result.content);
+      await writeOutput(outPath, smartResult.formatted);
+      const stats = getTokenStats(smartResult.content);
       totalTokens += stats.tokens;
       bar.advance(1, `${name} → ${outName} (${formatTokenStats(stats)})`);
       ok++;
-      if (usedOcr) ocr++;
-    } catch (err: any) {
+      if (smartResult.usedOcr) ocr++;
+    } catch (err) {
       bar.advance(1, `${name}: failed`);
       fail++;
     }
@@ -664,8 +636,8 @@ async function postConversionMenu(
     try {
       await writeClipboard(content);
       p.log.success("Copied to clipboard");
-    } catch (err: any) {
-      p.log.error(`Clipboard failed: ${err.message}`);
+    } catch (err) {
+      p.log.error(`Clipboard failed: ${errorMessage(err)}`);
     }
   } else if (action === "open") {
     const cmd = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";

@@ -5,6 +5,7 @@ import { readClipboard, writeClipboard } from "../core/clipboard";
 import { convertHtmlToMarkdown } from "../core/convert";
 import { writeOutput } from "../core/output";
 import { guard } from "../shared/wizard-utils";
+import { errorMessage } from "../shared/errors";
 
 export interface PasteOptions {
   copy?: boolean;
@@ -23,11 +24,11 @@ export async function runPaste(options: PasteOptions): Promise<void> {
   let clip;
   try {
     clip = await readClipboard();
-  } catch (err: any) {
+  } catch (err) {
     if (hasFlag) {
-      console.error(`✗ ${err.message}`);
+      console.error(`✗ ${errorMessage(err)}`);
     } else {
-      p.log.error(err.message);
+      p.log.error(errorMessage(err));
     }
     process.exit(1);
   }
@@ -48,12 +49,12 @@ export async function runPaste(options: PasteOptions): Promise<void> {
     s?.start("Converting clipboard HTML…");
     try {
       markdown = await convertHtmlToMarkdown(clip.html);
-    } catch (err: any) {
+    } catch (err) {
       if (s) {
         s.error("Conversion failed.");
-        p.log.error(err.message ?? String(err));
+        p.log.error(errorMessage(err));
       } else {
-        console.error(`✗ ${err.message ?? err}`);
+        console.error(`✗ ${errorMessage(err)}`);
       }
       process.exit(1);
     }

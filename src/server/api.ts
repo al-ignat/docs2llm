@@ -1,4 +1,5 @@
 import { convertBytes, convertHtmlToMarkdown, isImageMime, isTesseractError, TESSERACT_INSTALL_HINT } from "../core/convert";
+import { errorMessage } from "../shared/errors";
 import { getTokenStats, checkLLMFit, formatLLMFit } from "../core/tokens";
 import { safeFetchBytes } from "../core/url-safe";
 import { convertMarkdownTo, type OutboundFormat } from "../core/outbound";
@@ -97,7 +98,7 @@ async function handleConvert(req: Request): Promise<Response> {
       tokens: stats.tokens,
       fits: fits.map((f) => ({ name: f.name, limit: f.limit, fits: f.fits })),
     });
-  } catch (err: any) {
+  } catch (err) {
     // Auto-triggered OCR (images): fall back to non-OCR and include warning
     if (isTesseractError(err) && isImage && !ocrEnabled && !ocrForce) {
       try {
@@ -115,15 +116,15 @@ async function handleConvert(req: Request): Promise<Response> {
           fits: fits.map((f) => ({ name: f.name, limit: f.limit, fits: f.fits })),
           warning: "OCR unavailable (Tesseract not installed). Result may be incomplete for images.",
         });
-      } catch (fallbackErr: any) {
-        return Response.json({ error: fallbackErr.message ?? String(fallbackErr) }, { status: 500 });
+      } catch (fallbackErr) {
+        return Response.json({ error: errorMessage(fallbackErr) }, { status: 500 });
       }
     }
     // Explicit OCR requested by user: fail with install instructions
     if (isTesseractError(err)) {
       return Response.json({ error: TESSERACT_INSTALL_HINT }, { status: 500 });
     }
-    return Response.json({ error: err.message ?? String(err) }, { status: 500 });
+    return Response.json({ error: errorMessage(err) }, { status: 500 });
   }
 }
 
@@ -146,8 +147,8 @@ async function handleConvertUrl(req: Request): Promise<Response> {
     const result = await safeFetchBytes(url);
     bytes = result.bytes;
     contentType = result.contentType;
-  } catch (err: any) {
-    const msg = err.message ?? String(err);
+  } catch (err) {
+    const msg = errorMessage(err);
     // SSRF validation errors → 400, upstream fetch failures → 502
     if (msg.includes("Blocked") || msg.includes("Invalid URL") || msg.includes("Blocked URL scheme")) {
       return Response.json({ error: msg }, { status: 400 });
@@ -179,8 +180,8 @@ async function handleConvertUrl(req: Request): Promise<Response> {
       tokens: stats.tokens,
       fits: fits.map((f) => ({ name: f.name, limit: f.limit, fits: f.fits })),
     });
-  } catch (err: any) {
-    return Response.json({ error: err.message ?? String(err) }, { status: 500 });
+  } catch (err) {
+    return Response.json({ error: errorMessage(err) }, { status: 500 });
   }
 }
 
@@ -209,8 +210,8 @@ async function handleConvertClipboard(req: Request): Promise<Response> {
       tokens: stats.tokens,
       fits: fits.map((f) => ({ name: f.name, limit: f.limit, fits: f.fits })),
     });
-  } catch (err: any) {
-    return Response.json({ error: err.message ?? String(err) }, { status: 500 });
+  } catch (err) {
+    return Response.json({ error: errorMessage(err) }, { status: 500 });
   }
 }
 
@@ -264,8 +265,8 @@ async function handleConvertOutbound(req: Request): Promise<Response> {
         "Content-Disposition": `attachment; filename="${safeName}.${outFormat}"`,
       },
     });
-  } catch (err: any) {
-    return Response.json({ error: err.message ?? String(err) }, { status: 500 });
+  } catch (err) {
+    return Response.json({ error: errorMessage(err) }, { status: 500 });
   } finally {
     try { unlinkSync(tmpIn); } catch {}
     if (outPath) try { unlinkSync(outPath); } catch {}

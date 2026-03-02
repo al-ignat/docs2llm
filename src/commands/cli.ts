@@ -20,6 +20,7 @@ import { startServer } from "../server/api";
 import { startWatcher } from "./watch";
 import { startMcpServer } from "../server/mcp";
 import { setOutputMode, convertSingleFile, convertFolder, convertUrl, convertStdin, cliError } from "./run";
+import { errorMessage } from "../shared/errors";
 
 const VALID_FORMATS = new Set(["md", "json", "yaml", "docx", "pptx", "html"]);
 
@@ -365,8 +366,8 @@ async function main() {
         effectiveFormat = tpl.format;
         effectiveFormatExplicit = true;
       }
-    } catch (err: any) {
-      cliError(`✗ ${err.message}`);
+    } catch (err) {
+      cliError(`✗ ${errorMessage(err)}`);
       process.exit(1);
     }
   }

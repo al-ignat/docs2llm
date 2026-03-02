@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, statSync } from "fs";
 import { convertFile } from "../core/convert";
 import { writeOutput } from "../core/output";
 import { getTokenStats, formatTokenStats } from "../core/tokens";
+import { errorMessage } from "../shared/errors";
 
 const CONVERTIBLE_EXTS = new Set([
   ".docx", ".doc", ".pdf", ".pptx", ".ppt",
@@ -56,8 +57,8 @@ export function startWatcher(inputDir: string, outputDir: string): void {
         await writeOutput(outPath, result.formatted);
         const stats = getTokenStats(result.content);
         console.log(`✓ ${filename} → ${outName} (${formatTokenStats(stats)})`);
-      } catch (err: any) {
-        console.error(`✗ ${filename}: ${err.message ?? err}`);
+      } catch (err) {
+        console.error(`✗ ${filename}: ${errorMessage(err)}`);
       }
     })();
 

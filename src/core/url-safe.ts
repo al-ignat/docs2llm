@@ -2,7 +2,8 @@
  * URL validation, SSRF protection, and safe fetch with timeout + size limits.
  */
 
-import { resolve as dnsResolve } from "dns/promises";
+import { resolve4 as dnsResolve4, resolve6 as dnsResolve6 } from "dns/promises";
+import { errorMessage } from "../shared/errors";
 
 export const MAX_RESPONSE_BYTES = 100 * 1024 * 1024; // 100 MB
 export const FETCH_TIMEOUT_MS = 30_000; // 30 seconds
@@ -81,10 +82,26 @@ function isPrivateIPv6(ip: string): boolean {
   if (lower.startsWith("fe80:") || lower.startsWith("fe80%")) return true;
   // Unique local address (fc00::/7)
   if (lower.startsWith("fc") || lower.startsWith("fd")) return true;
-  // IPv4-mapped (::ffff:x.x.x.x) — check the embedded IPv4
+  // IPv4-mapped (::ffff:x.x.x.x or ::ffff:XXYY:ZZWW hex form)
   if (lower.startsWith("::ffff:")) {
-    const v4Part = lower.slice(7);
-    if (isPrivateIPv4(v4Part)) return true;
+    const mapped = lower.slice(7);
+    // Dotted-quad form: ::ffff:127.0.0.1
+    if (mapped.includes(".")) {
+      return isPrivateIPv4(mapped);
+    }
+    // Hex form: ::ffff:7f00:1 (URL parsers normalize dotted-quad to this)
+    const hexParts = mapped.split(":");
+    if (hexParts.length === 2) {
+      const hi = parseInt(hexParts[0], 16);
+      const lo = parseInt(hexParts[1], 16);
+      if (!isNaN(hi) && !isNaN(lo) && hi <= 0xffff && lo <= 0xffff) {
+        const a = (hi >> 8) & 0xff;
+        const b = hi & 0xff;
+        const c = (lo >> 8) & 0xff;
+        const d = lo & 0xff;
+        return isPrivateIPv4(`${a}.${b}.${c}.${d}`);
+      }
+    }
   }
   return false;
 }
@@ -108,15 +125,29 @@ async function validateResolvedIPs(hostname: string): Promise<void> {
   }
 
   try {
-    const addresses = await dnsResolve(hostname);
-    for (const addr of addresses) {
-      if (isPrivateIPv4(addr)) {
-        throw new Error(`Blocked request: ${hostname} resolves to private IP ${addr}`);
+    const [v4Result, v6Result] = await Promise.allSettled([
+      dnsResolve4(hostname),
+      dnsResolve6(hostname),
+    ]);
+
+    if (v4Result.status === "fulfilled") {
+      for (const addr of v4Result.value) {
+        if (isPrivateIPv4(addr)) {
+          throw new Error(`Blocked request: ${hostname} resolves to private IP ${addr}`);
+        }
       }
     }
-  } catch (err: any) {
+
+    if (v6Result.status === "fulfilled") {
+      for (const addr of v6Result.value) {
+        if (isPrivateIPv6(addr)) {
+          throw new Error(`Blocked request: ${hostname} resolves to private IP ${addr}`);
+        }
+      }
+    }
+  } catch (err) {
     // Re-throw our own validation errors
-    if (err.message?.startsWith("Blocked")) throw err;
+    if (errorMessage(err).startsWith("Blocked")) throw err;
     // DNS resolution failures will be caught by fetch() itself
   }
 }
@@ -140,9 +171,9 @@ export async function safeFetch(url: string): Promise<Response> {
         signal: controller.signal,
         redirect: "manual",
       });
-    } catch (err: any) {
+    } catch (err) {
       clearTimeout(timer);
-      if (err.name === "AbortError") {
+      if (err instanceof Error && err.name === "AbortError") {
         throw new Error(`Request timed out after ${FETCH_TIMEOUT_MS / 1000}s: ${currentUrl}`);
       }
       throw err;
