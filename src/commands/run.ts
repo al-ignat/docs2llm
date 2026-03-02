@@ -54,20 +54,50 @@ interface ConversionResult {
   error?: string;
 }
 
-export async function convertSingleFile(
-  filePath: string,
-  format: OutputFormat,
-  outputDir?: string,
-  formatExplicit?: boolean,
-  force?: boolean,
-  cliPandocArgs?: string[],
-  config?: Config,
-  templateName?: string | null,
-  ocr?: OcrOptions,
-  useStdout?: boolean,
-  chunks?: boolean,
-  chunkSize?: number | null,
-) {
+export interface ConvertFileOptions {
+  format: OutputFormat;
+  outputDir?: string;
+  formatExplicit?: boolean;
+  force?: boolean;
+  cliPandocArgs?: string[];
+  config?: Config;
+  templateName?: string | null;
+  ocr?: OcrOptions;
+  useStdout?: boolean;
+  chunks?: boolean;
+  chunkSize?: number | null;
+}
+
+export interface ConvertFolderOptions {
+  format: OutputFormat;
+  outputDir?: string;
+  formatExplicit?: boolean;
+  force?: boolean;
+  cliPandocArgs?: string[];
+  config?: Config;
+  templateName?: string | null;
+  ocr?: OcrOptions;
+}
+
+export interface ConvertUrlOptions {
+  format: OutputFormat;
+  outputDir?: string;
+  force?: boolean;
+  useStdout?: boolean;
+}
+
+export interface ConvertStdinOptions {
+  format: OutputFormat;
+  useStdout: boolean;
+  outputDir?: string;
+  force?: boolean;
+  ocr?: OcrOptions;
+  chunks?: boolean;
+  chunkSize?: number | null;
+}
+
+export async function convertSingleFile(filePath: string, options: ConvertFileOptions) {
+  const { format, outputDir, formatExplicit, force, cliPandocArgs, config, templateName, ocr, useStdout, chunks, chunkSize } = options;
   const t0 = performance.now();
   let plan;
   try {
@@ -194,17 +224,8 @@ export async function convertSingleFile(
   }
 }
 
-export async function convertFolder(
-  dir: string,
-  format: OutputFormat,
-  outputDir?: string,
-  formatExplicit?: boolean,
-  force?: boolean,
-  cliPandocArgs?: string[],
-  config?: Config,
-  templateName?: string | null,
-  ocr?: OcrOptions
-) {
+export async function convertFolder(dir: string, options: ConvertFolderOptions) {
+  const { format, outputDir, formatExplicit, force, cliPandocArgs, config, templateName, ocr } = options;
   const t0 = performance.now();
   const { readdirSync } = await import("fs");
   const { join, basename } = await import("path");
@@ -346,7 +367,8 @@ export async function convertFolder(
   }
 }
 
-export async function convertUrl(url: string, format: OutputFormat, outputDir?: string, force?: boolean, useStdout?: boolean) {
+export async function convertUrl(url: string, options: ConvertUrlOptions) {
+  const { format, outputDir, force, useStdout } = options;
   const { basename: pathBasename } = await import("path");
 
   try {
@@ -385,15 +407,8 @@ export async function convertUrl(url: string, format: OutputFormat, outputDir?: 
   }
 }
 
-export async function convertStdin(
-  format: OutputFormat,
-  useStdout: boolean,
-  outputDir?: string,
-  force?: boolean,
-  ocr?: OcrOptions,
-  chunks?: boolean,
-  chunkSize?: number | null,
-) {
+export async function convertStdin(options: ConvertStdinOptions) {
+  const { format, useStdout, outputDir, force, ocr, chunks, chunkSize } = options;
   const { convertBytes } = await import("../core/convert");
 
   // Read all of stdin as bytes with size limit

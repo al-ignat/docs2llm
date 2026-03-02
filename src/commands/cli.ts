@@ -381,7 +381,7 @@ async function main() {
 
   // stdin mode: read binary data from stdin and convert
   if (useStdin) {
-    await convertStdin(format, useStdout, effectiveOutputDir, effectiveForce, ocr, chunks, chunkSize);
+    await convertStdin({ format, useStdout, outputDir: effectiveOutputDir, force: effectiveForce, ocr, chunks, chunkSize });
     return;
   }
 
@@ -392,7 +392,7 @@ async function main() {
 
   // URL detection: fetch and convert web pages or remote documents
   if (input.startsWith("http://") || input.startsWith("https://")) {
-    await convertUrl(input, effectiveFormat, effectiveOutputDir, effectiveForce, useStdout);
+    await convertUrl(input, { format: effectiveFormat, outputDir: effectiveOutputDir, force: effectiveForce, useStdout });
     return;
   }
 
@@ -416,16 +416,18 @@ async function main() {
   }
 
   if (stat.isFile()) {
-    await convertSingleFile(
-      resolvedInput, effectiveFormat, effectiveOutputDir,
-      effectiveFormatExplicit, effectiveForce, pandocArgs, config, template, ocr,
-      useStdout, chunks, chunkSize
-    );
+    await convertSingleFile(resolvedInput, {
+      format: effectiveFormat, outputDir: effectiveOutputDir,
+      formatExplicit: effectiveFormatExplicit, force: effectiveForce,
+      cliPandocArgs: pandocArgs, config, templateName: template, ocr,
+      useStdout, chunks, chunkSize,
+    });
   } else if (stat.isDirectory()) {
-    await convertFolder(
-      resolvedInput, effectiveFormat, effectiveOutputDir,
-      effectiveFormatExplicit, effectiveForce, pandocArgs, config, template, ocr
-    );
+    await convertFolder(resolvedInput, {
+      format: effectiveFormat, outputDir: effectiveOutputDir,
+      formatExplicit: effectiveFormatExplicit, force: effectiveForce,
+      cliPandocArgs: pandocArgs, config, templateName: template, ocr,
+    });
   } else {
     cliError(
       `✗ '${input}' is not a file or folder.\n` +
