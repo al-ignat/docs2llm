@@ -20,15 +20,17 @@ export function countWords(text: string): number {
   return text.split(/\s+/).filter(Boolean).length;
 }
 
-export function estimateTokens(text: string): number {
+export function estimateTokens(text: string, precomputedWords?: number): number {
   // ~1.33 tokens per word is a common heuristic for English text
-  return Math.ceil(countWords(text) * 1.33);
+  const words = precomputedWords ?? countWords(text);
+  return Math.ceil(words * 1.33);
 }
 
 export function getTokenStats(text: string): TokenStats {
+  const words = countWords(text);
   return {
-    words: countWords(text),
-    tokens: estimateTokens(text),
+    words,
+    tokens: estimateTokens(text, words),
   };
 }
 
@@ -61,11 +63,12 @@ export function smallestLimit(fits: LLMFit[]): LLMFit | undefined {
 }
 
 export function truncateToFit(text: string, targetTokens: number): string {
-  const words = text.split(/\s+/).filter(Boolean);
+  const wordCount = countWords(text);
   // Leave 1% margin for the suffix and rounding errors
   const safeTarget = Math.floor(targetTokens * 0.99);
   const targetWords = Math.floor(safeTarget / 1.33);
-  if (words.length <= targetWords) return text;
+  if (wordCount <= targetWords) return text;
+  const words = text.split(/\s+/).filter(Boolean);
   return words.slice(0, targetWords).join(" ") + "\n\n[Truncated to fit context window]";
 }
 
@@ -79,7 +82,8 @@ export interface SplitResult {
  * Splits at paragraph boundaries when possible.
  */
 export function splitToFit(text: string, targetTokens: number): SplitResult {
-  const totalTokens = estimateTokens(text);
+  const totalWords = countWords(text);
+  const totalTokens = estimateTokens(text, totalWords);
   const numParts = Math.ceil(totalTokens / (targetTokens * 0.95)); // 5% margin
 
   if (numParts <= 1) {
@@ -90,14 +94,16 @@ export function splitToFit(text: string, targetTokens: number): SplitResult {
   const targetWordsPerPart = Math.floor((targetTokens * 0.95) / 1.33);
 
   const parts: string[] = [];
+  const wordsPerPart: number[] = [];
   let currentParagraphs: string[] = [];
   let currentWords = 0;
 
   for (const para of paragraphs) {
-    const paraWords = para.split(/\s+/).filter(Boolean).length;
+    const paraWords = countWords(para);
 
     if (currentWords + paraWords > targetWordsPerPart && currentParagraphs.length > 0) {
       parts.push(currentParagraphs.join("\n\n"));
+      wordsPerPart.push(currentWords);
       currentParagraphs = [];
       currentWords = 0;
     }
@@ -108,8 +114,9 @@ export function splitToFit(text: string, targetTokens: number): SplitResult {
 
   if (currentParagraphs.length > 0) {
     parts.push(currentParagraphs.join("\n\n"));
+    wordsPerPart.push(currentWords);
   }
 
-  const tokensPerPart = parts.map((p) => estimateTokens(p));
+  const tokensPerPart = wordsPerPart.map((w) => estimateTokens("", w));
   return { parts, tokensPerPart };
 }
