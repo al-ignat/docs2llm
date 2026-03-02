@@ -565,22 +565,34 @@ async function convertBatchInteractive(dir: string, config?: Config) {
   let fail = 0;
   let ocr = 0;
   let totalTokens = 0;
-  for (const file of files) {
-    const name = basename(file);
-    try {
-      const smartResult = await convertFileWithSmartOcr(file, "md");
 
-      const outName = name.replace(/\.[^.]+$/, "") + ".md";
-      const outPath = join(dirname(file), outName);
-      await writeOutput(outPath, smartResult.formatted);
-      const stats = getTokenStats(smartResult.content);
-      totalTokens += stats.tokens;
-      bar.advance(1, `${name} → ${outName} (${formatTokenStats(stats)})`);
-      ok++;
-      if (smartResult.usedOcr) ocr++;
-    } catch (err) {
-      bar.advance(1, `${name}: failed`);
-      fail++;
+  const BATCH_SIZE = 4;
+  for (let i = 0; i < files.length; i += BATCH_SIZE) {
+    const batch = files.slice(i, i + BATCH_SIZE);
+    const results = await Promise.allSettled(
+      batch.map(async (file) => {
+        const name = basename(file);
+        const smartResult = await convertFileWithSmartOcr(file, "md");
+        const outName = name.replace(/\.[^.]+$/, "") + ".md";
+        const outPath = join(dirname(file), outName);
+        await writeOutput(outPath, smartResult.formatted);
+        const stats = getTokenStats(smartResult.content);
+        return { name, outName, stats, usedOcr: smartResult.usedOcr };
+      })
+    );
+
+    for (let j = 0; j < results.length; j++) {
+      const result = results[j];
+      if (result.status === "fulfilled") {
+        const { name, outName, stats, usedOcr } = result.value;
+        totalTokens += stats.tokens;
+        bar.advance(1, `${name} → ${outName} (${formatTokenStats(stats)})`);
+        ok++;
+        if (usedOcr) ocr++;
+      } else {
+        bar.advance(1, `${basename(batch[j])}: failed`);
+        fail++;
+      }
     }
   }
 
