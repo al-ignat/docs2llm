@@ -16,10 +16,11 @@ import {
   isInstalled,
 } from "./lib/docs2llm";
 import { detectSource, SmartSource } from "./lib/smart-detect";
+import { BINARY_NOT_FOUND_HUD, extractErrorMessage, failToast } from "./lib/errors";
 
 export default async function Command() {
   if (!isInstalled()) {
-    await showHUD("docs2llm not found — set binary path in preferences");
+    await showHUD(BINARY_NOT_FOUND_HUD);
     return;
   }
 
@@ -43,7 +44,7 @@ export default async function Command() {
   try {
     outDir = getOutputDir();
   } catch (err) {
-    await showHUD(String(err instanceof Error ? err.message : err));
+    await showHUD(extractErrorMessage(err));
     return;
   }
 
@@ -231,11 +232,3 @@ async function saveOutbound(source: SmartSource, outDir: string, fmt: string) {
   }
 }
 
-function failToast(message: string): Toast.Options {
-  const isPandocError = message.toLowerCase().includes("pandoc");
-  return {
-    style: Toast.Style.Failure,
-    title: isPandocError ? "Pandoc required" : "Conversion failed",
-    message: isPandocError ? "brew install pandoc" : message,
-  };
-}

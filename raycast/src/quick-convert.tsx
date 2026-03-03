@@ -27,6 +27,8 @@ import {
   OUTBOUND_FORMATS,
 } from "./lib/format-utils";
 import { ResultView } from "./lib/result-view";
+import { failToast } from "./lib/errors";
+import { NotInstalledView } from "./lib/not-found-view";
 
 export default function Command() {
   const { push } = useNavigation();
@@ -73,9 +75,7 @@ export default function Command() {
   }, []);
 
   if (!isInstalled()) {
-    return (
-      <Detail markdown="# docs2llm not found\n\nInstall it or set the binary path in extension preferences." />
-    );
+    return <NotInstalledView />;
   }
 
   if (noSelection) {
@@ -124,14 +124,7 @@ export default function Command() {
           : await exportMarkdown(filePath, fmt);
 
         if (result.error) {
-          const isPandocError = result.error.toLowerCase().includes("pandoc");
-          await showToast({
-            style: Toast.Style.Failure,
-            title: isPandocError ? "Pandoc required" : "Export failed",
-            message: isPandocError
-              ? "Install Pandoc: brew install pandoc"
-              : result.error,
-          });
+          await showToast(failToast(result.error));
           return;
         }
 
@@ -159,11 +152,7 @@ export default function Command() {
         const result = await convertFile(filePath, fmt, values.ocr);
 
         if (result.error) {
-          await showToast({
-            style: Toast.Style.Failure,
-            title: "Conversion failed",
-            message: result.error,
-          });
+          await showToast(failToast(result.error));
           return;
         }
 

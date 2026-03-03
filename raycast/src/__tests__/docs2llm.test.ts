@@ -320,6 +320,26 @@ describe("docs2llm CLI integration", () => {
       expect(isInstalled()).toBe(false);
     });
 
+    it("detects timeout when err.killed is true", async () => {
+      mocks.execFile.mockImplementation(
+        (
+          _cmd: string,
+          _args: string[],
+          _opts: unknown,
+          cb: (err: Error | null, stdout: string, stderr: string) => void,
+        ) => {
+          const err = new Error("command timed out") as Error & { killed: boolean };
+          err.killed = true;
+          cb(err, "", "partial output");
+        },
+      );
+
+      const result = await convertFile("/tmp/test.pdf");
+
+      expect(result.error).toMatch(/Timed out/);
+      expect(result.error).toContain("partial output");
+    });
+
     it("returns error message without spawning when not installed", async () => {
       mocks.existsSync.mockReturnValue(false);
 

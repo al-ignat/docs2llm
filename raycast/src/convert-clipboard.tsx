@@ -29,6 +29,8 @@ import {
   OUTBOUND_FORMATS,
 } from "./lib/format-utils";
 import { ResultView } from "./lib/result-view";
+import { failToast } from "./lib/errors";
+import { NotInstalledView } from "./lib/not-found-view";
 
 export function describeClipboard(clip: ClipboardContent): string {
   switch (clip.kind) {
@@ -111,11 +113,7 @@ export default function Command() {
   }, []);
 
   if (!isInstalled()) {
-    return (
-      <Form>
-        <Form.Description text="docs2llm not found. Install it or set the binary path in extension preferences." />
-      </Form>
-    );
+    return <NotInstalledView />;
   }
 
   async function handleSubmit(values: {
@@ -167,13 +165,8 @@ export default function Command() {
         await handleOutbound(clip!, fmt, values.template);
       }
     } catch (err) {
-      const msg = String(err instanceof Error ? err.message : err);
-      const isPandocError = msg.toLowerCase().includes("pandoc");
-      await showToast({
-        style: Toast.Style.Failure,
-        title: isPandocError ? "Pandoc required" : "Conversion failed",
-        message: isPandocError ? "brew install pandoc" : msg,
-      });
+      const msg = err instanceof Error ? err.message : String(err);
+      await showToast(failToast(msg));
     } finally {
       setIsLoading(false);
     }

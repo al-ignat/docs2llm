@@ -315,7 +315,7 @@ async function handlePutConfig(req: Request): Promise<Response> {
   // Clean up undefined values in defaults
   if (merged.defaults) {
     for (const [k, v] of Object.entries(merged.defaults)) {
-      if (v === undefined || v === null || v === "") delete (merged.defaults as any)[k];
+      if (v === undefined || v === null || v === "") Reflect.deleteProperty(merged.defaults, k);
     }
     if (Object.keys(merged.defaults).length === 0) delete merged.defaults;
   }
@@ -387,7 +387,7 @@ async function handleCreateTemplate(req: Request): Promise<Response> {
     try {
       sanitizePandocArgs(pandocArgs);
     } catch (err) {
-      return Response.json({ error: errorMessage(err) }, { status: 400 });
+      return Response.json({ error: safeErrorMessage(err) }, { status: 400 });
     }
   }
 

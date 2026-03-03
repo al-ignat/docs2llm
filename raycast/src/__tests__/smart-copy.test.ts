@@ -38,6 +38,11 @@ vi.mock("../lib/smart-detect", () => ({
   detectSource: mocks.detectSource,
 }));
 
+vi.mock("../lib/errors", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../lib/errors")>();
+  return { ...actual };
+});
+
 vi.mock("node:fs", () => ({
   readFileSync: mocks.readFileSync,
   writeFileSync: mocks.writeFileSync,
@@ -159,7 +164,7 @@ describe("Smart Copy", () => {
       expect(mocks.showToast).toHaveBeenCalledWith(
         expect.objectContaining({
           title: "Pandoc required",
-          message: "brew install pandoc",
+          message: "Pandoc is required. Install: brew install pandoc",
         }),
       );
     });

@@ -22,6 +22,7 @@ import {
   getFinderFolder,
   isFinderFrontmost,
 } from "./lib/smart-detect";
+import { BINARY_NOT_FOUND_HUD, failToast } from "./lib/errors";
 
 interface CommandPrefs {
   defaultFormat: string;
@@ -31,7 +32,7 @@ interface CommandPrefs {
 
 export default async function Command() {
   if (!isInstalled()) {
-    await showHUD("docs2llm not found — set binary path in preferences");
+    await showHUD(BINARY_NOT_FOUND_HUD);
     return;
   }
 
@@ -286,11 +287,3 @@ function makeFilename(
   return `clipboard-${timestamp}.${ext}`;
 }
 
-function failToast(message: string): Toast.Options {
-  const isPandocError = message.toLowerCase().includes("pandoc");
-  return {
-    style: Toast.Style.Failure,
-    title: isPandocError ? "Pandoc required" : "Conversion failed",
-    message: isPandocError ? "brew install pandoc" : message,
-  };
-}
