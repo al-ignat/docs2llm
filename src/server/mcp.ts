@@ -3,7 +3,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { readdirSync } from "fs";
 import { join, extname } from "path";
-import { convertFile, convertHtmlToMarkdown, isTesseractError, TESSERACT_INSTALL_HINT, type OcrOptions } from "../core/convert";
+import { convertFile, convertHtmlToMarkdown, isTesseractError, TESSERACT_INSTALL_HINT, type OcrOptions, type OutputFormat } from "../core/convert";
 import { convertMarkdownTo, type OutboundFormat } from "../core/outbound";
 import { fetchAndConvert } from "../core/fetch";
 import { getTokenStats } from "../core/tokens";
@@ -11,7 +11,8 @@ import { loadConfig, buildPandocArgs, serializeConfig } from "../core/config";
 import { INBOUND_ONLY_EXTS } from "../core/scan";
 import { errorMessage } from "../shared/errors";
 
-export async function startMcpServer() {
+/** Create the MCP server with all tools registered (without connecting a transport). */
+export function createMcpServer(): McpServer {
   const server = new McpServer({
     name: "docs2llm",
     version: "1.0.0",
@@ -179,7 +180,7 @@ export async function startMcpServer() {
           const batch = files.slice(i, i + BATCH_SIZE);
           const settled = await Promise.allSettled(
             batch.map(async (file) => {
-              const result = await convertFile(file, outFormat as any);
+              const result = await convertFile(file, outFormat as OutputFormat);
               const stats = getTokenStats(result.content);
               return `✓ ${file} (~${stats.tokens} tokens)`;
             })
@@ -285,6 +286,11 @@ export async function startMcpServer() {
     }
   );
 
+  return server;
+}
+
+export async function startMcpServer() {
+  const server = createMcpServer();
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }

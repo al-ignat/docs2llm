@@ -7,6 +7,7 @@ import {
   Toast,
 } from "@raycast/api";
 import { ConvertResult, saveToFile } from "./docs2llm";
+import { extractErrorMessage } from "./errors";
 
 interface ResultViewProps {
   result: ConvertResult;
@@ -48,7 +49,7 @@ export function ResultView({
       await showToast({
         style: Toast.Style.Failure,
         title: "Save failed",
-        message: String(err),
+        message: extractErrorMessage(err),
       });
     }
   }

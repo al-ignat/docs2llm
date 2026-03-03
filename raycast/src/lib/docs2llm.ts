@@ -201,7 +201,9 @@ function run(args: string[]): Promise<ConvertResult> {
       },
       (err, stdout, stderr) => {
         if (err) {
-          const msg = stderr?.trim() || err.message;
+          const isTimeout = !!(err as NodeJS.ErrnoException & { killed?: boolean }).killed;
+          const rawMsg = stderr?.trim() || err.message;
+          const msg = isTimeout ? `Timed out after ${TIMEOUT_MS / 1000}s. ${rawMsg}` : rawMsg;
           resolve({ content: "", words: 0, tokens: 0, error: msg });
         } else {
           const stats = computeStats(stdout);

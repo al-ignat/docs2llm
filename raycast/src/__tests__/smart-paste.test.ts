@@ -50,6 +50,11 @@ vi.mock("../lib/smart-detect", () => ({
   looksLikeMarkdown: mocks.looksLikeMarkdown,
 }));
 
+vi.mock("../lib/errors", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../lib/errors")>();
+  return { ...actual };
+});
+
 vi.mock("node:fs", () => ({
   readFileSync: mocks.readFileSync,
   writeFileSync: mocks.writeFileSync,

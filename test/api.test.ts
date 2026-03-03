@@ -241,6 +241,46 @@ describe("GET /config/templates", () => {
   });
 });
 
+// --- Concurrency limiter ---
+
+describe("concurrency limiter", () => {
+  test("returns 429 when conversion limit exceeded", async () => {
+    // Fire 4 concurrent conversions (limit is 3) — at least one should get 429
+    const form = () => {
+      const f = new FormData();
+      // Use a valid text file to trigger actual conversion (not a 400 error)
+      f.append("file", new File(["Hello world, this is a test."], "test.txt", { type: "text/plain" }));
+      return f;
+    };
+
+    const requests = Array.from({ length: 6 }, () =>
+      fetch(`${base}/convert`, { method: "POST", body: form() })
+    );
+
+    const responses = await Promise.all(requests);
+    const statuses = responses.map((r) => r.status);
+
+    // At least one 200 (some got through) and at least one 429 (some were rejected)
+    expect(statuses).toContain(200);
+    expect(statuses).toContain(429);
+
+    // Verify 429 body
+    const rejected = responses.find((r) => r.status === 429)!;
+    const json = await rejected.json();
+    expect(json.error).toContain("busy");
+  });
+
+  test("conversion succeeds under the limit", async () => {
+    // Single request should always succeed
+    const form = new FormData();
+    form.append("file", new File(["Simple test content."], "test.txt", { type: "text/plain" }));
+    const res = await fetch(`${base}/convert`, { method: "POST", body: form });
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.content).toBeDefined();
+  });
+});
+
 // --- 404 ---
 
 describe("unknown routes", () => {

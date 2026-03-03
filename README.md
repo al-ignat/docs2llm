@@ -8,6 +8,8 @@ Powered by [Kreuzberg](https://kreuzberg.dev) for extraction and [Pandoc](https:
 
 ## Quick Start
 
+### CLI
+
 ```bash
 # Convert any document — outputs Markdown by default
 bunx docs2llm report.pdf
@@ -17,13 +19,15 @@ bunx docs2llm
 
 # Convert a web page
 bunx docs2llm https://example.com/article
+```
 
-# Pipe through shell scripts
-cat report.pdf | bunx docs2llm --stdin --stdout
+### Web UI
 
-# Launch a local web UI with drag-and-drop
+```bash
 bunx docs2llm open
 ```
+
+Opens a local drag-and-drop interface at `localhost:3000`. Drop any file, paste a URL, or Cmd+V from clipboard — converts to Markdown instantly.
 
 ## Install
 
@@ -128,6 +132,68 @@ docs2llm paste -o snippet.md           # save to file
 
 Works on macOS, Linux (requires `xclip` or `xsel`), and Windows.
 
+### Interactive Mode
+
+Running `docs2llm` with no arguments launches a guided wizard:
+
+1. **File picker** — scans your current directory and `~/Downloads` (last 24h), sorted by recency. Also offers URL input, batch conversion, and manual path entry.
+
+2. **Format picker** — for Markdown files, choose output format (Word, PowerPoint, HTML) or a named template.
+
+3. **Output directory** — choose where to save (current dir, same as input, config default, or custom path).
+
+4. **Conversion** — with progress spinner, token count, and LLM fit indicator.
+
+5. **Post-conversion** — copy to clipboard, open file, or reveal in Finder.
+
+6. **Large document handling** — if output exceeds an LLM's context window, choose to truncate, split into parts, or keep as-is.
+
+### Web UI
+
+```bash
+docs2llm open
+```
+
+Opens in your browser (port 3000, or next available). Features:
+
+- **Inbound**: drag and drop any file, paste a URL, or Cmd+V from clipboard — converts to Markdown
+- **Outbound**: drop a `.md` file to convert it to Word, PowerPoint, or HTML (with template support)
+- **Settings**: gear icon opens a config panel — set default format, Pandoc args, manage templates
+- Copy to clipboard, download `.md`, token count and LLM fit indicator
+- Dark theme
+
+## Output Formats
+
+**Markdown** (default) — clean text with tables, headings, and lists:
+
+```markdown
+# Test Report
+
+This is paragraph one.
+
+| Name  | Value |
+| ----- | ----- |
+| Alpha | 100   |
+```
+
+**JSON** — structured output with metadata, token stats, and quality score:
+
+```json
+{
+  "source": "report.docx",
+  "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "words": 1250,
+  "tokens": 1663,
+  "metadata": { "page_count": 1, "format_type": "docx" },
+  "content": "# Test Report\n\n...",
+  "qualityScore": 0.95
+}
+```
+
+**YAML** — same structure as JSON, in YAML format.
+
+## Advanced Usage
+
 ### Piping (stdin/stdout)
 
 For shell scripts and automation:
@@ -171,49 +237,6 @@ Output format:
 ]
 ```
 
-### Web UI
-
-Launch a local web interface:
-
-```bash
-docs2llm open
-```
-
-Opens in your browser (port 3000, or next available). Features:
-
-- **Inbound**: drag and drop any file, paste a URL, or Cmd+V from clipboard — converts to Markdown
-- **Outbound**: drop a `.md` file to convert it to Word, PowerPoint, or HTML (with template support)
-- **Settings**: gear icon opens a config panel — set default format, Pandoc args, manage templates
-- Copy to clipboard, download `.md`, token count and LLM fit indicator
-- Dark theme
-
-### Raycast Extension
-
-Use docs2llm from [Raycast](https://raycast.com) with keyboard shortcuts — no terminal needed.
-
-**Smart commands** auto-detect your context (Finder selection, text selection, or clipboard) and conversion direction:
-
-| Command | What it does |
-|---------|-------------|
-| **Smart Copy** | Detect source → convert → copy to clipboard |
-| **Smart Paste** | Convert clipboard → paste into active app (or save to Finder folder) |
-| **Smart Save** | Detect source → convert → save to output directory |
-
-**Direct commands** for specific workflows:
-
-| Command | What it does |
-|---------|-------------|
-| Convert File | Pick a file and convert to Markdown/JSON/YAML |
-| Convert URL | Fetch a URL and convert to Markdown |
-| Convert Clipboard | Convert clipboard contents to Markdown |
-| Quick Convert | Convert selected Finder file → clipboard |
-| Export Markdown | Convert .md to Word/PowerPoint/HTML via Pandoc |
-| Markdown to Rich Text | Clipboard Markdown → rich HTML for pasting |
-| Copy as Rich Text | Selected Finder .md → rich HTML on clipboard |
-| Save Clipboard | Detect clipboard content → save as converted file |
-
-Install from the `raycast/` directory in this repo. Requires docs2llm (via Bun or compiled binary) and optionally Pandoc for outbound conversion.
-
 ### MCP Server (Claude Desktop / Cursor)
 
 Expose docs2llm as an MCP tool server so LLMs can convert documents directly:
@@ -222,13 +245,7 @@ Expose docs2llm as an MCP tool server so LLMs can convert documents directly:
 docs2llm serve
 ```
 
-This starts a stdio-based [Model Context Protocol](https://modelcontextprotocol.io) server with three tools:
-
-| Tool | Description |
-|------|-------------|
-| `convert_file` | Convert a local file to markdown (with optional OCR) |
-| `convert_url` | Fetch and convert a web page |
-| `list_formats` | List supported file formats |
+This starts a stdio-based [Model Context Protocol](https://modelcontextprotocol.io) server with three tools: `convert_file`, `convert_url`, and `list_formats`.
 
 Add to your Claude Desktop config (`claude_desktop_config.json`):
 
@@ -243,67 +260,7 @@ Add to your Claude Desktop config (`claude_desktop_config.json`):
 }
 ```
 
-Now Claude can say "let me read that PDF" and actually do it.
-
-## Interactive Mode
-
-Running `docs2llm` with no arguments launches a guided wizard:
-
-1. **File picker** — scans your current directory and `~/Downloads` (last 24h), sorted by recency. Also offers:
-   - **Paste a URL** — convert a web page
-   - **Convert all files in current folder** — batch conversion
-   - **Convert all recent downloads** — batch conversion
-   - **Browse or paste a path** — manual input (supports drag-and-drop from Finder)
-
-2. **Format picker** — for Markdown files, choose output format (Word, PowerPoint, HTML) or a named template
-
-3. **Output directory** — choose where to save (current dir, same as input, config default, or custom path)
-
-4. **Conversion** — with progress spinner, token count, and LLM fit indicator
-
-5. **Post-conversion menu**:
-   - **Copy to clipboard** — paste straight into ChatGPT/Claude
-   - **Open file** — open in your default app
-   - **Open in Finder** — reveal in file manager
-   - **Done**
-
-6. **Smart handling for large documents**:
-   - If the output exceeds an LLM's context window, you're offered a choice:
-     - **Shorten (truncate)** — trim to fit the smallest model
-     - **Split into N parts** — split at paragraph boundaries into `report-part-1.md`, `report-part-2.md`, etc.
-     - **Keep as-is**
-
-## Output Formats
-
-**Markdown** (default) — clean text with tables, headings, and lists:
-
-```markdown
-# Test Report
-
-This is paragraph one.
-
-| Name  | Value |
-| ----- | ----- |
-| Alpha | 100   |
-```
-
-**JSON** — structured output with metadata, token stats, and quality score:
-
-```json
-{
-  "source": "report.docx",
-  "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  "words": 1250,
-  "tokens": 1663,
-  "metadata": { "page_count": 1, "format_type": "docx" },
-  "content": "# Test Report\n\n...",
-  "qualityScore": 0.95
-}
-```
-
-**YAML** — same structure as JSON, in YAML format.
-
-## Config
+### Config & Templates
 
 Create a config file to set defaults, per-format Pandoc args, and named templates:
 
@@ -347,6 +304,10 @@ Templates appear in the interactive mode format picker and can be used with `-t`
 docs2llm notes.md -t report          # uses template's format + pandoc args
 docs2llm notes.md -t report -f html  # explicit -f overrides template format
 ```
+
+### Raycast Extension
+
+A [Raycast](https://raycast.com) extension is available in the `raycast/` directory with smart commands that auto-detect context (Finder selection, text, clipboard) and convert with keyboard shortcuts. See `raycast/README.md` for setup and full command list.
 
 ## Supported Formats
 

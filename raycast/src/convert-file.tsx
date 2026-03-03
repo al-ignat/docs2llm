@@ -1,7 +1,6 @@
 import {
   Action,
   ActionPanel,
-  Detail,
   Form,
   getPreferenceValues,
   open,
@@ -26,6 +25,8 @@ import {
   OUTBOUND_FORMATS,
 } from "./lib/format-utils";
 import { ResultView } from "./lib/result-view";
+import { failToast } from "./lib/errors";
+import { NotInstalledView } from "./lib/not-found-view";
 
 interface FormValues {
   file: string[];
@@ -49,38 +50,7 @@ export default function Command() {
   const templates = loadTemplates();
 
   if (!isInstalled()) {
-    return (
-      <Detail
-        markdown={`# docs2llm not found
-
-The \`docs2llm\` binary was not found on your system.
-
-## Install
-
-\`\`\`bash
-# Install with bun
-bun install -g docs2llm
-
-# Or build from source
-git clone https://github.com/al-ignat/docs2llm
-cd docs2llm && bun run build
-\`\`\`
-
-You can also set a custom binary path in the extension preferences.`}
-        actions={
-          <ActionPanel>
-            <Action.OpenInBrowser
-              title="View on GitHub"
-              url="https://github.com/al-ignat/docs2llm"
-            />
-            <Action.Open
-              title="Open Extension Preferences"
-              target="raycast://extensions/al-ignat/docs2llm"
-            />
-          </ActionPanel>
-        }
-      />
-    );
+    return <NotInstalledView />;
   }
 
   async function handleSubmit(values: FormValues) {
@@ -116,14 +86,7 @@ You can also set a custom binary path in the extension preferences.`}
       setIsLoading(false);
 
       if (result.error) {
-        const isPandocError = result.error.toLowerCase().includes("pandoc");
-        await showToast({
-          style: Toast.Style.Failure,
-          title: isPandocError ? "Pandoc required" : "Export failed",
-          message: isPandocError
-            ? "Install Pandoc: brew install pandoc"
-            : result.error,
-        });
+        await showToast(failToast(result.error));
         return;
       }
 
@@ -148,11 +111,7 @@ You can also set a custom binary path in the extension preferences.`}
       setIsLoading(false);
 
       if (result.error) {
-        await showToast({
-          style: Toast.Style.Failure,
-          title: "Conversion failed",
-          message: result.error,
-        });
+        await showToast(failToast(result.error));
         return;
       }
 
