@@ -1,4 +1,5 @@
 import { Clipboard } from "@raycast/api";
+import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 
 export type ClipboardContent =
@@ -9,11 +10,29 @@ export type ClipboardContent =
   | { kind: "empty" };
 
 /**
+ * Read clipboard HTML via Swift/AppKit (bypasses Raycast API limits).
+ * Raycast's Clipboard.read() can miss large HTML payloads (e.g. Outlook emails).
+ */
+function readClipboardHtmlNative(): string | null {
+  try {
+    const result = execFileSync(
+      "swift",
+      ["-e", 'import AppKit; if let html = NSPasteboard.general.string(forType: .html) { print(html) }'],
+      { encoding: "utf-8", timeout: 5000 },
+    );
+    const trimmed = result.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Detect clipboard content type using structured Clipboard.read().
  *
  * Priority:
  * 1. file — Finder-copied file (Cmd+C on a file)
- * 2. html — rich content from web page copy
+ * 2. html — rich content from web page copy (Raycast API, then Swift fallback)
  * 3. text matching URL pattern
  * 4. text matching file path (exists on disk)
  * 5. plain text
@@ -27,9 +46,15 @@ export async function detectClipboard(): Promise<ClipboardContent> {
     return { kind: "filepath", path: clip.file };
   }
 
-  // 2. Rich HTML content
+  // 2. Rich HTML content (Raycast API)
   if (clip.html && clip.html.trim().length > 0) {
     return { kind: "html", html: clip.html, text: clip.text };
+  }
+
+  // 2b. Fallback: read HTML via Swift/AppKit (handles large payloads Raycast misses)
+  const nativeHtml = readClipboardHtmlNative();
+  if (nativeHtml) {
+    return { kind: "html", html: nativeHtml, text: clip.text };
   }
 
   const text = clip.text?.trim();
