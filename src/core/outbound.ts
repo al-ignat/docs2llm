@@ -67,7 +67,7 @@ export function sanitizePandocArgs(args: string[]): void {
 
 let pandocAvailable: boolean | null = null;
 
-async function checkPandoc(): Promise<boolean> {
+export async function checkPandoc(): Promise<boolean> {
   if (pandocAvailable !== null) return pandocAvailable;
 
   try {

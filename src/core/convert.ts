@@ -1,6 +1,6 @@
 import { stringify as yamlStringify } from "yaml";
 import { extname } from "path";
-import { convertMarkdownTo, type OutboundFormat } from "./outbound";
+import { convertMarkdownTo, checkPandoc, type OutboundFormat } from "./outbound";
 import { countWords, estimateTokens } from "./tokens";
 import { OUTBOUND_FORMATS } from "./validate";
 
@@ -94,6 +94,18 @@ export async function convertBytes(
 }
 
 export async function convertHtmlToMarkdown(html: string): Promise<string> {
+  html = cleanEmailHtml(html);
+
+  // Prefer Pandoc: handles rowspan/colspan, multi-line cells via grid tables
+  try {
+    if (await checkPandoc()) {
+      return await pandocHtmlToMarkdown(html);
+    }
+  } catch {
+    // Pandoc failed — fall back to Kreuzberg
+  }
+
+  // Fallback: Kreuzberg (handles simple tables, no merged cell support)
   const mod = await getKreuzberg();
   const buffer = new TextEncoder().encode(html);
   const result = await mod.extractBytes(buffer, "text/html", {
@@ -101,12 +113,76 @@ export async function convertHtmlToMarkdown(html: string): Promise<string> {
     htmlOptions: {
       preprocessing: {
         enabled: true,
+        preset: "aggressive",
         removeNavigation: true,
         removeForms: true,
       },
     },
   });
   return result.content;
+}
+
+/** Strip Outlook/email-specific HTML cruft before conversion. */
+export function cleanEmailHtml(html: string): string {
+  return html
+    // MSO conditional comments: <!--[if gte mso 9]>...<![endif]-->
+    .replace(/<!--\[if[\s\S]*?<!\[endif\]-->/gi, "")
+    // Orphaned endif comments
+    .replace(/<!\[endif\]-->/gi, "")
+    // MSO XML elements: <o:p>, <o:OfficeDocumentSettings>, etc.
+    .replace(/<o:[^>]*(?:\/>|>[\s\S]*?<\/o:[^>]*>)/gi, "")
+    // Embedded XML blocks
+    .replace(/<xml>[\s\S]*?<\/xml>/gi, "")
+    // MSO-specific classes (no semantic value)
+    .replace(/ class="Mso[^"]*"/gi, "");
+}
+
+const PANDOC_HTML_TIMEOUT_MS = 30_000;
+
+async function pandocHtmlToMarkdown(html: string): Promise<string> {
+  const proc = Bun.spawn([
+    "pandoc",
+    "-f", "html",
+    "-t", "markdown+pipe_tables-simple_tables-multiline_tables-raw_html-native_divs-native_spans-header_attributes-bracketed_spans-fenced_divs",
+    "--wrap=none",
+  ], { stdin: "pipe", stdout: "pipe", stderr: "pipe" });
+
+  proc.stdin.write(html);
+  proc.stdin.end();
+
+  const timeout = setTimeout(() => proc.kill(), PANDOC_HTML_TIMEOUT_MS);
+  const [stdout, stderr] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+  ]);
+  const code = await proc.exited;
+  clearTimeout(timeout);
+
+  if (code !== 0) {
+    throw new Error(`Pandoc HTML conversion failed (exit ${code}): ${stderr.trim()}`);
+  }
+
+  return cleanPandocMarkdown(stdout);
+}
+
+/** Post-process Pandoc markdown output for clean LLM consumption. */
+export function cleanPandocMarkdown(md: string): string {
+  return md
+    // Unwrap Pandoc bracketed spans: [text]{style="..."} or [text]{.class} → text
+    .replace(/\[([^\]]*)\]\{[^}]*\}/g, "$1")
+    // Strip remaining standalone attribute blocks: {style="..."}, {.class}, {}
+    .replace(/\s*\{[^}]*\}/g, "")
+    // Remove fenced div markers (::: ...)
+    .replace(/^:::\s*.*$/gm, "")
+    // Unescape common Pandoc escapes (dollar, at-sign, percent)
+    .replace(/\\\$/g, "$")
+    .replace(/\\@/g, "@")
+    .replace(/\\%/g, "%")
+    // Remove standalone hard line breaks (\ on its own line)
+    .replace(/^\\\s*$/gm, "")
+    // Clean up excessive blank lines
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 export async function convertFile(
@@ -130,6 +206,15 @@ export async function convertFile(
       mimeType: "",
       outputPath: outPath,
     };
+  }
+
+  // HTML files: use enhanced pipeline (Pandoc for merged tables, email cleanup)
+  const ext = extname(filePath).toLowerCase();
+  if (ext === ".html" || ext === ".htm") {
+    const html = await Bun.file(filePath).text();
+    const content = await convertHtmlToMarkdown(html);
+    const formatted = formatOutput(content, filePath, "text/html", {}, format);
+    return { content, formatted, sourcePath: filePath, mimeType: "text/html" };
   }
 
   // Inbound: documents → text via Kreuzberg

@@ -6,6 +6,9 @@ import {
   isImageMime,
   isTesseractError,
   TESSERACT_INSTALL_HINT,
+  cleanEmailHtml,
+  cleanPandocMarkdown,
+  convertHtmlToMarkdown,
 } from "../src/core/convert";
 
 describe("looksLikeScannedPdf", () => {
@@ -108,6 +111,196 @@ describe("TESSERACT_INSTALL_HINT", () => {
     expect(TESSERACT_INSTALL_HINT).toContain("brew install tesseract");
     expect(TESSERACT_INSTALL_HINT).toContain("apt install tesseract-ocr");
     expect(TESSERACT_INSTALL_HINT).toContain("choco install tesseract");
+  });
+});
+
+describe("cleanEmailHtml", () => {
+  test("removes MSO conditional comments", () => {
+    const html = '<!--[if gte mso 9]><xml><o:OfficeDocumentSettings></o:OfficeDocumentSettings></xml><![endif]--><p>Hello</p>';
+    const result = cleanEmailHtml(html);
+    expect(result).not.toContain("<!--[if");
+    expect(result).not.toContain("<![endif]");
+    expect(result).toContain("<p>Hello</p>");
+  });
+
+  test("removes orphaned endif comments", () => {
+    const html = '<p>Hello</p><![endif]-->';
+    expect(cleanEmailHtml(html)).not.toContain("<![endif]");
+    expect(cleanEmailHtml(html)).toContain("Hello");
+  });
+
+  test("removes MSO XML elements", () => {
+    const html = '<p>Hello</p><o:p></o:p><o:OfficeDocumentSettings><o:AllowPNG/></o:OfficeDocumentSettings>';
+    const result = cleanEmailHtml(html);
+    expect(result).not.toContain("<o:");
+    expect(result).toContain("Hello");
+  });
+
+  test("removes self-closing MSO XML elements", () => {
+    const html = '<p>Hello</p><o:p/>';
+    expect(cleanEmailHtml(html)).not.toContain("<o:p/>");
+  });
+
+  test("removes embedded XML blocks", () => {
+    const html = '<xml><w:WordDocument></w:WordDocument></xml><p>Hello</p>';
+    const result = cleanEmailHtml(html);
+    expect(result).not.toContain("<xml>");
+    expect(result).toContain("Hello");
+  });
+
+  test("removes MSO-specific classes", () => {
+    const html = '<p class="MsoNormal">Hello</p><p class="MsoListParagraph">World</p>';
+    const result = cleanEmailHtml(html);
+    expect(result).not.toContain('class="Mso');
+    expect(result).toContain("Hello");
+    expect(result).toContain("World");
+  });
+
+  test("preserves non-MSO content", () => {
+    const html = '<div class="content"><p>Normal HTML</p><a href="https://example.com">Link</a></div>';
+    expect(cleanEmailHtml(html)).toBe(html);
+  });
+
+  test("handles complex Outlook HTML with all patterns", () => {
+    const html = [
+      '<!--[if gte mso 9]><xml><o:OfficeDocumentSettings><o:AllowPNG/></o:OfficeDocumentSettings></xml><![endif]-->',
+      '<div class="WordSection1">',
+      '<p class="MsoNormal"><span>Hello</span><o:p></o:p></p>',
+      '<xml><w:WordDocument></w:WordDocument></xml>',
+      '<p class="MsoNormal">World</p>',
+      '</div>',
+      '<![endif]-->',
+    ].join("\n");
+    const result = cleanEmailHtml(html);
+    expect(result).not.toContain("<!--[if");
+    expect(result).not.toContain("<![endif]");
+    expect(result).not.toContain("<o:");
+    expect(result).not.toContain("<xml>");
+    expect(result).not.toContain('class="Mso');
+    expect(result).toContain("Hello");
+    expect(result).toContain("World");
+  });
+});
+
+describe("cleanPandocMarkdown", () => {
+  test("unwraps bracketed spans with style attributes", () => {
+    const md = '[Hello]{style="font-size:10pt;color:white"}';
+    expect(cleanPandocMarkdown(md)).toBe("Hello");
+  });
+
+  test("unwraps bracketed spans with class attributes", () => {
+    const md = '[Hello]{.WordSection1}';
+    expect(cleanPandocMarkdown(md)).toBe("Hello");
+  });
+
+  test("strips standalone attribute blocks", () => {
+    const md = 'Hello {.someclass}';
+    expect(cleanPandocMarkdown(md)).toBe("Hello");
+  });
+
+  test("strips empty attribute blocks", () => {
+    const md = 'Hello {}';
+    expect(cleanPandocMarkdown(md)).toBe("Hello");
+  });
+
+  test("removes fenced div markers", () => {
+    const md = '::: WordSection1\nHello\n:::';
+    expect(cleanPandocMarkdown(md)).toBe("Hello");
+  });
+
+  test("unescapes dollar signs", () => {
+    const md = '\\$1,234,567';
+    expect(cleanPandocMarkdown(md)).toBe("$1,234,567");
+  });
+
+  test("removes standalone hard line breaks", () => {
+    const md = 'Hello\n\\\n\nWorld';
+    expect(cleanPandocMarkdown(md)).toBe("Hello\n\nWorld");
+  });
+
+  test("collapses excessive blank lines", () => {
+    const md = 'Hello\n\n\n\n\nWorld';
+    expect(cleanPandocMarkdown(md)).toBe("Hello\n\nWorld");
+  });
+
+  test("handles Pandoc table output with style annotations", () => {
+    const md = [
+      '| **[Project]{style="font-size:10pt;color:white"}** | **[Status]{style="font-size:10pt"}** |',
+      '|---|---|',
+      '| [Alpha]{style="font-size:10pt"} | [On Track]{style="font-size:10pt"} |',
+    ].join("\n");
+    const result = cleanPandocMarkdown(md);
+    expect(result).toContain("**Project**");
+    expect(result).toContain("**Status**");
+    expect(result).toContain("Alpha");
+    expect(result).not.toContain("{style=");
+  });
+});
+
+describe("convertHtmlToMarkdown", () => {
+  test("converts simple table to pipe table", async () => {
+    const html = '<table><tr><th>Name</th><th>Age</th></tr><tr><td>Alice</td><td>30</td></tr></table>';
+    const result = await convertHtmlToMarkdown(html);
+    expect(result).toContain("|");
+    expect(result).toContain("Name");
+    expect(result).toContain("Alice");
+    expect(result).toContain("30");
+  });
+
+  test("converts table with rowspan/colspan to grid table", async () => {
+    const html = [
+      '<table border="1">',
+      '<tr><td rowspan="2">Category</td><td colspan="2">Q4</td></tr>',
+      '<tr><td>Revenue</td><td>Cost</td></tr>',
+      '<tr><td>Product A</td><td>$100</td><td>$50</td></tr>',
+      '</table>',
+    ].join("");
+    const result = await convertHtmlToMarkdown(html);
+    // Grid table uses + for corners
+    expect(result).toContain("+");
+    expect(result).toContain("Category");
+    expect(result).toContain("Revenue");
+    expect(result).toContain("Product A");
+    // Should NOT be a bullet list (the old broken behavior)
+    expect(result).not.toContain("- Category");
+  });
+
+  test("strips Outlook conditional comments", async () => {
+    const html = '<!--[if gte mso 9]><xml></xml><![endif]--><p>Hello world</p><![endif]-->';
+    const result = await convertHtmlToMarkdown(html);
+    expect(result).not.toContain("<!--[if");
+    expect(result).not.toContain("<![endif]");
+    expect(result).toContain("Hello world");
+  });
+
+  test("strips Pandoc style annotations", async () => {
+    const html = '<p style="font-size:10pt;color:red">Styled text</p>';
+    const result = await convertHtmlToMarkdown(html);
+    expect(result).not.toContain("{style=");
+    expect(result).toContain("Styled text");
+  });
+
+  test("handles multi-line cell content", async () => {
+    const html = '<table><tr><td>Line 1<br>Line 2</td><td>Other</td></tr></table>';
+    const result = await convertHtmlToMarkdown(html);
+    expect(result).toContain("Line 1");
+    expect(result).toContain("Line 2");
+    expect(result).toContain("Other");
+  });
+
+  test("converts non-table HTML correctly", async () => {
+    const html = '<h1>Title</h1><p>Paragraph with <strong>bold</strong> and <em>italic</em>.</p><ul><li>Item 1</li><li>Item 2</li></ul>';
+    const result = await convertHtmlToMarkdown(html);
+    expect(result).toContain("# Title");
+    expect(result).toContain("**bold**");
+    expect(result).toContain("*italic*");
+    expect(result).toContain("Item 1");
+  });
+
+  test("preserves links", async () => {
+    const html = '<p>See <a href="https://example.com">the docs</a> for details.</p>';
+    const result = await convertHtmlToMarkdown(html);
+    expect(result).toContain("[the docs](https://example.com)");
   });
 });
 
