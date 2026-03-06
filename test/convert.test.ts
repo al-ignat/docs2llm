@@ -213,9 +213,29 @@ describe("cleanPandocMarkdown", () => {
     expect(cleanPandocMarkdown(md)).toBe("$1,234,567");
   });
 
+  test("unescapes tildes", () => {
+    const md = '\\~11% of processing time';
+    expect(cleanPandocMarkdown(md)).toBe("~11% of processing time");
+  });
+
+  test("unescapes hashes", () => {
+    const md = 'Hypercare Wk \\#3';
+    expect(cleanPandocMarkdown(md)).toBe("Hypercare Wk #3");
+  });
+
+  test("removes trailing hard line breaks", () => {
+    const md = '**Scope**\\\n∙ 50 customers\\';
+    expect(cleanPandocMarkdown(md)).toBe("**Scope**\n∙ 50 customers");
+  });
+
   test("removes standalone hard line breaks", () => {
     const md = 'Hello\n\\\n\nWorld';
     expect(cleanPandocMarkdown(md)).toBe("Hello\n\nWorld");
+  });
+
+  test("removes orphaned bold markers", () => {
+    const md = '**\n\nSome content\n\n** **';
+    expect(cleanPandocMarkdown(md)).toBe("Some content");
   });
 
   test("collapses excessive blank lines", () => {
