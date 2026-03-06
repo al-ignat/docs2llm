@@ -238,6 +238,16 @@ describe("cleanPandocMarkdown", () => {
     expect(cleanPandocMarkdown(md)).toBe("Some content");
   });
 
+  test("removes inline bold-wrapped whitespace", () => {
+    const md = 'Auto rating** **stability to unlock operator** productivity**';
+    expect(cleanPandocMarkdown(md)).toBe("Auto rating stability to unlock operator** productivity**");
+  });
+
+  test("strips NBSP-only lines", () => {
+    const md = 'Hello\n\u00A0\nWorld';
+    expect(cleanPandocMarkdown(md)).toBe("Hello\n\nWorld");
+  });
+
   test("collapses excessive blank lines", () => {
     const md = 'Hello\n\n\n\n\nWorld';
     expect(cleanPandocMarkdown(md)).toBe("Hello\n\nWorld");

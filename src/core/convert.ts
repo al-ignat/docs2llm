@@ -184,6 +184,10 @@ export function cleanPandocMarkdown(md: string): string {
     .replace(/\\\s*$/gm, "")
     // Remove orphaned bold markers (** or ** ** on their own line)
     .replace(/^\*\*\s*\*?\*?\s*$/gm, "")
+    // Remove inline bold-wrapped whitespace: ** ** → single space (Outlook <b> </b> artifacts)
+    .replace(/\*\*\s+\*\*/g, " ")
+    // Strip NBSP-only lines (Outlook &nbsp; spacers)
+    .replace(/^\u00A0+$/gm, "")
     // Clean up excessive blank lines
     .replace(/\n{3,}/g, "\n\n")
     .trim();
