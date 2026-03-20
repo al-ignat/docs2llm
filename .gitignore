@@ -7,6 +7,12 @@ CLAUDE.md
 .kreuzberg/
 .tmp/
 
+# Evaluation harness (fixtures contain real documents)
+eval/fixtures/**
+!eval/fixtures/**/.gitkeep
+eval/results/
+eval/reports/
+
 # Build output
 /docs2llm
 *.dylib

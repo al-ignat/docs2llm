@@ -15,6 +15,7 @@
     "test": "bun test",
     "test:raycast": "npm --prefix raycast test",
     "typecheck": "tsc --noEmit",
+    "eval:run": "bun run eval/run.ts",
     "verify": "bun run typecheck && bun test && npm --prefix raycast test && bun run build && bun run build:raycast"
   },
   "bin": {
