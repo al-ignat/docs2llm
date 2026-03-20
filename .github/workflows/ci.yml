@@ -12,7 +12,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
-      - run: sudo apt-get update && sudo apt-get install -y pandoc
+      - run: |
+          wget -q https://github.com/jgm/pandoc/releases/download/3.6.4/pandoc-3.6.4-1-amd64.deb
+          sudo dpkg -i pandoc-3.6.4-1-amd64.deb
       - run: bun install --frozen-lockfile
       - run: bun run typecheck
       - run: bun test
