@@ -1,0 +1,13 @@
+description: "Marketing newsletter with MSO conditionals, tracking pixel, unsubscribe links"
+expect:
+  mustContain:
+    - "TechWeekly Digest"
+    - "Rust 2.0"
+    - "PostgreSQL 18"
+    - "Edge Computing"
+  mustNotContain:
+    - "Unsubscribe"
+    - "track.techweekly.dev"
+    - "Manage preferences"
+    - "class=\"Mso"
+    - "<o:p>"

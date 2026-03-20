@@ -53,7 +53,8 @@ export type ScoringDimension =
   | "headings"
   | "noise"
   | "ocr"
-  | "links";
+  | "links"
+  | "contentExtraction";
 
 /** Per-dimension result */
 export interface DimensionScore {
@@ -75,6 +76,7 @@ export interface FixtureResult {
   engine?: string;
   warnings?: string[];
   extractionMs?: number;
+  baselineScore?: number;
 }
 
 /** Per-class summary in report */

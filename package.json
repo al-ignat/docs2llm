@@ -26,6 +26,8 @@
     "@kreuzberg/node": "^4",
     "@kreuzberg/wasm": "^4",
     "@modelcontextprotocol/sdk": "^1.26.0",
+    "defuddle": "^0.14.0",
+    "linkedom": "^0.18.12",
     "yaml": "^2",
     "zod": "^4.3.6"
   },

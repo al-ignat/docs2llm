@@ -8,6 +8,7 @@
  *   bun run eval/run.ts --fixture=myfile.pdf
  *   bun run eval/run.ts --json
  *   bun run eval/run.ts --verbose
+ *   bun run eval/run.ts --compare          # A/B: Defuddle vs baseline on HTML fixtures
  */
 
 import { mkdir, writeFile } from "fs/promises";
@@ -17,12 +18,15 @@ import { scoreFixture, computeOverall } from "./score";
 import { buildReport, formatCliTable, writeReport } from "./report";
 import { countWords, estimateTokens } from "../src/core/tokens";
 import { extract } from "../src/core/extraction";
-import type { DocumentClass, FixtureResult, EvalReport } from "./types";
+import { convertHtmlToMarkdown } from "../src/core/adapters/pandoc-html";
+import type { DocumentClass, Fixture, FixtureResult, EvalReport } from "./types";
 
 const ROOT = dirname(import.meta.dir);
 const FIXTURES_DIR = join(ROOT, "eval", "fixtures");
 const RESULTS_DIR = join(ROOT, "eval", "results");
 const REPORTS_DIR = join(ROOT, "eval", "reports");
+
+const HTML_CLASSES = new Set(["article-html", "webpage-html", "email-html"]);
 
 // --- CLI arg parsing ---
 
@@ -31,6 +35,7 @@ function parseArgs(argv: string[]) {
   let filterFixture: string | null = null;
   let jsonOutput = false;
   let verbose = false;
+  let compare = false;
 
   for (const arg of argv) {
     if (arg.startsWith("--class=")) {
@@ -41,10 +46,12 @@ function parseArgs(argv: string[]) {
       jsonOutput = true;
     } else if (arg === "--verbose") {
       verbose = true;
+    } else if (arg === "--compare") {
+      compare = true;
     }
   }
 
-  return { filterClass, filterFixture, jsonOutput, verbose };
+  return { filterClass, filterFixture, jsonOutput, verbose, compare };
 }
 
 // --- Engine version detection ---
@@ -69,6 +76,87 @@ async function getKreuzbergVersion(): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+// --- A/B comparison ---
+
+interface CompareRow {
+  fixture: string;
+  documentClass: string;
+  baseline: number;
+  defuddle: number;
+  delta: number;
+  skipped: boolean;
+}
+
+async function runHtmlFixtureWithOptions(
+  fixture: Fixture,
+  skipDefuddle: boolean,
+): Promise<{ content: string; engine: string; score: number }> {
+  const html = await Bun.file(fixture.filePath).text();
+  const { content, engine } = await convertHtmlToMarkdown(html, { skipDefuddle });
+  const scores = scoreFixture(content, fixture);
+  const score = computeOverall(scores);
+  return { content, engine, score };
+}
+
+function formatCompareTable(rows: CompareRow[]): string {
+  const lines: string[] = [];
+  const color = {
+    green: (s: string) => `\x1b[32m${s}\x1b[0m`,
+    yellow: (s: string) => `\x1b[33m${s}\x1b[0m`,
+    red: (s: string) => `\x1b[31m${s}\x1b[0m`,
+    bold: (s: string) => `\x1b[1m${s}\x1b[0m`,
+    dim: (s: string) => `\x1b[2m${s}\x1b[0m`,
+  };
+
+  lines.push("");
+  lines.push(color.bold("  A/B: HTML fixtures (Defuddle vs Baseline)"));
+  lines.push("");
+
+  const header = `  ${"Fixture".padEnd(45)} ${"Baseline".padStart(10)} ${"Defuddle".padStart(10)} ${"Delta".padStart(10)}`;
+  lines.push(color.bold(header));
+  lines.push(`  ${"─".repeat(77)}`);
+
+  for (const row of rows) {
+    const name = `${row.documentClass}/${row.fixture}`.slice(0, 44).padEnd(45);
+    const base = row.baseline.toFixed(2).padStart(10);
+    const def = row.defuddle.toFixed(2).padStart(10);
+
+    let deltaStr: string;
+    if (row.skipped) {
+      deltaStr = color.dim("skipped".padStart(10));
+    } else if (row.delta > 0.005) {
+      deltaStr = color.green(`+${row.delta.toFixed(2)}`.padStart(10));
+    } else if (row.delta < -0.005) {
+      deltaStr = color.red(row.delta.toFixed(2).padStart(10));
+    } else {
+      deltaStr = color.dim(" 0.00".padStart(10));
+    }
+
+    lines.push(`  ${name} ${base} ${def} ${deltaStr}`);
+  }
+
+  lines.push(`  ${"─".repeat(77)}`);
+
+  const applicable = rows.filter((r) => !r.skipped);
+  if (applicable.length > 0) {
+    const avgDelta = applicable.reduce((s, r) => s + r.delta, 0) / applicable.length;
+    const avgBase = applicable.reduce((s, r) => s + r.baseline, 0) / applicable.length;
+    const avgDef = applicable.reduce((s, r) => s + r.defuddle, 0) / applicable.length;
+    const name = color.bold("Average".padEnd(45));
+    const base = avgBase.toFixed(2).padStart(10);
+    const def = avgDef.toFixed(2).padStart(10);
+    const delta = avgDelta > 0.005
+      ? color.green(`+${avgDelta.toFixed(2)}`.padStart(10))
+      : avgDelta < -0.005
+        ? color.red(avgDelta.toFixed(2).padStart(10))
+        : color.dim(" 0.00".padStart(10));
+    lines.push(`  ${name} ${base} ${def} ${delta}`);
+  }
+
+  lines.push("");
+  return lines.join("\n");
 }
 
 // --- Main ---
@@ -106,9 +194,54 @@ async function main() {
     }
   }
 
+  // --- A/B compare mode ---
+  if (args.compare) {
+    const htmlFixtures = fixtures.filter((f) => HTML_CLASSES.has(f.documentClass));
+    if (htmlFixtures.length === 0) {
+      console.error("No HTML fixtures found for comparison.");
+      process.exit(1);
+    }
+
+    console.log(`\n  Running A/B comparison on ${htmlFixtures.length} HTML fixture(s)...\n`);
+
+    const rows: CompareRow[] = [];
+    for (const fixture of htmlFixtures) {
+      const isEmail = fixture.documentClass === "email-html";
+
+      // Baseline: skip Defuddle
+      const baseline = await runHtmlFixtureWithOptions(fixture, true);
+
+      // Experiment: with Defuddle (unless email — Defuddle is already skipped for email)
+      const experiment = isEmail
+        ? baseline
+        : await runHtmlFixtureWithOptions(fixture, false);
+
+      rows.push({
+        fixture: fixture.fileName,
+        documentClass: fixture.documentClass,
+        baseline: baseline.score,
+        defuddle: experiment.score,
+        delta: experiment.score - baseline.score,
+        skipped: isEmail,
+      });
+
+      if (args.verbose) {
+        const tag = isEmail ? " (email, skipped)" : "";
+        console.log(
+          `  ${fixture.documentClass}/${fixture.fileName}: ` +
+            `baseline=${baseline.score.toFixed(2)} defuddle=${experiment.score.toFixed(2)} ` +
+            `delta=${(experiment.score - baseline.score).toFixed(2)}${tag}`,
+        );
+      }
+    }
+
+    console.log(formatCompareTable(rows));
+    return;
+  }
+
+  // --- Standard eval mode ---
   console.log(`\n  Running eval on ${fixtures.length} fixture(s)...\n`);
 
-  // Run conversions and score
   const results: FixtureResult[] = [];
 
   for (const fixture of fixtures) {

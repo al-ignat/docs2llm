@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>fastcache: High-performance LRU cache for Go</title></head>
+<body>
+<header class="gh-header">
+  <nav class="gh-nav">
+    <a href="/" class="gh-logo">GitHub</a>
+    <div class="gh-search"><input type="text" placeholder="Search or jump to..."></div>
+    <ul class="gh-nav-links">
+      <li><a href="/pulls">Pull requests</a></li>
+      <li><a href="/issues">Issues</a></li>
+      <li><a href="/marketplace">Marketplace</a></li>
+      <li><a href="/explore">Explore</a></li>
+    </ul>
+    <div class="gh-user-nav">
+      <a href="/notifications">Notifications</a>
+      <a href="/settings">Settings</a>
+    </div>
+  </nav>
+</header>
+
+<div class="repo-header">
+  <h1 class="repo-name"><a href="/goroutines">goroutines</a> / <a href="/goroutines/fastcache"><strong>fastcache</strong></a></h1>
+  <div class="repo-badges">
+    <span class="badge">Public</span>
+  </div>
+  <div class="repo-actions">
+    <button class="btn-sm">Pin</button>
+    <button class="btn-sm">Unwatch <span class="count">42</span></button>
+    <button class="btn-sm">Fork <span class="count">187</span></button>
+    <button class="btn-sm">Star <span class="count">3,241</span></button>
+  </div>
+</div>
+
+<nav class="repo-tabs">
+  <a href="/goroutines/fastcache" class="active">Code</a>
+  <a href="/goroutines/fastcache/issues">Issues <span class="count">23</span></a>
+  <a href="/goroutines/fastcache/pulls">Pull requests <span class="count">5</span></a>
+  <a href="/goroutines/fastcache/actions">Actions</a>
+  <a href="/goroutines/fastcache/security">Security</a>
+  <a href="/goroutines/fastcache/insights">Insights</a>
+</nav>
+
+<div class="repo-layout">
+  <div class="repo-sidebar-right">
+    <div class="sidebar-section">
+      <h3>About</h3>
+      <p>High-performance, concurrent-safe LRU cache for Go with zero allocation gets.</p>
+      <div class="repo-topics">
+        <a href="/topics/go" class="topic-tag">go</a>
+        <a href="/topics/cache" class="topic-tag">cache</a>
+        <a href="/topics/lru" class="topic-tag">lru</a>
+        <a href="/topics/concurrency" class="topic-tag">concurrency</a>
+      </div>
+    </div>
+    <div class="sidebar-section">
+      <h3>Releases</h3>
+      <a href="/goroutines/fastcache/releases">12 releases</a>
+    </div>
+    <div class="sidebar-section">
+      <h3>Contributors</h3>
+      <span>28 contributors</span>
+    </div>
+    <div class="sidebar-section">
+      <h3>Languages</h3>
+      <div class="language-bar">
+        <span class="lang-go">Go 94.2%</span>
+        <span class="lang-makefile">Makefile 3.1%</span>
+        <span class="lang-shell">Shell 2.7%</span>
+      </div>
+    </div>
+  </div>
+
+  <main class="repo-content">
+    <div class="file-navigation">
+      <button class="branch-selector">main ▾</button>
+      <div class="file-path">fastcache / README.md</div>
+      <div class="file-actions">
+        <button>Go to file</button>
+        <button>Add file ▾</button>
+        <button class="btn-primary">Code ▾</button>
+      </div>
+    </div>
+
+    <article class="readme-content" id="readme">
+      <h1>fastcache</h1>
+      <p>A high-performance, concurrent-safe LRU cache for Go. Designed for read-heavy workloads with zero-allocation gets and lock-free reads via sharded architecture.</p>
+
+      <h2>Features</h2>
+      <ul>
+        <li><strong>Zero-allocation gets</strong> — cache hits allocate nothing, reducing GC pressure</li>
+        <li><strong>Sharded design</strong> — 256 independent shards minimize lock contention</li>
+        <li><strong>TTL support</strong> — per-entry expiration with lazy cleanup</li>
+        <li><strong>Metrics built-in</strong> — hit rate, eviction count, memory usage exposed via API</li>
+        <li><strong>Type-safe generics</strong> — uses Go 1.18+ generics for compile-time type safety</li>
+      </ul>
+
+      <h2>Installation</h2>
+      <pre><code>go get github.com/goroutines/fastcache@latest</code></pre>
+
+      <h2>Quick Start</h2>
+      <pre><code class="language-go">package main
+
+import (
+    "fmt"
+    "time"
+    "github.com/goroutines/fastcache"
+)
+
+func main() {
+    // Create a cache with 10,000 entry capacity and 5-minute TTL
+    cache := fastcache.New[string, []byte](
+        fastcache.WithCapacity(10_000),
+        fastcache.WithTTL(5 * time.Minute),
+    )
+
+    // Set a value
+    cache.Set("user:123", []byte(`{"name": "Alice"}`))
+
+    // Get a value (zero allocation on hit)
+    if val, ok := cache.Get("user:123"); ok {
+        fmt.Printf("Found: %s\n", val)
+    }
+
+    // Check metrics
+    stats := cache.Stats()
+    fmt.Printf("Hit rate: %.1f%%\n", stats.HitRate()*100)
+}</code></pre>
+
+      <h2>Benchmarks</h2>
+      <p>Benchmarks run on Apple M2 Pro, Go 1.22, 1M entries:</p>
+      <table>
+        <thead>
+          <tr><th>Operation</th><th>fastcache</th><th>sync.Map</th><th>groupcache</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>Get (hit)</td><td>28ns</td><td>89ns</td><td>142ns</td></tr>
+          <tr><td>Get (miss)</td><td>15ns</td><td>45ns</td><td>67ns</td></tr>
+          <tr><td>Set</td><td>95ns</td><td>312ns</td><td>198ns</td></tr>
+          <tr><td>Mixed 90/10 R/W</td><td>34ns</td><td>102ns</td><td>155ns</td></tr>
+        </tbody>
+      </table>
+
+      <h2>Configuration</h2>
+      <p>All options are set via functional options pattern:</p>
+      <pre><code class="language-go">cache := fastcache.New[K, V](
+    fastcache.WithCapacity(50_000),     // max entries
+    fastcache.WithTTL(10 * time.Minute), // default TTL
+    fastcache.WithShards(512),           // override shard count
+    fastcache.WithOnEvict(func(key K, val V) {
+        log.Printf("evicted: %v", key)
+    }),
+)</code></pre>
+
+      <h2>Thread Safety</h2>
+      <p>All operations are safe for concurrent use. The sharded architecture distributes entries across 256 independent maps (configurable), each with its own RWMutex. Read operations acquire only a read lock on the target shard.</p>
+
+      <h2>License</h2>
+      <p>MIT License. See <a href="/goroutines/fastcache/blob/main/LICENSE">LICENSE</a> for details.</p>
+    </article>
+  </main>
+</div>
+
+<footer class="gh-footer">
+  <ul class="footer-links">
+    <li><a href="/terms">Terms</a></li>
+    <li><a href="/privacy">Privacy</a></li>
+    <li><a href="/security">Security</a></li>
+    <li><a href="/status">Status</a></li>
+    <li><a href="/docs">Docs</a></li>
+    <li><a href="/contact">Contact</a></li>
+    <li><a href="/pricing">Pricing</a></li>
+    <li><a href="/api">API</a></li>
+    <li><a href="/training">Training</a></li>
+    <li><a href="/blog">Blog</a></li>
+    <li><a href="/about">About</a></li>
+  </ul>
+  <p>© 2026 GitHub, Inc.</p>
+</footer>
+</body>
+</html>

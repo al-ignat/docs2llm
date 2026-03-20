@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { getExtractor, KreuzbergExtractor, PandocHtmlExtractor } from "../src/core/adapters";
-import { cleanEmailHtml, cleanPandocMarkdown, convertHtmlToMarkdown } from "../src/core/adapters/pandoc-html";
+import { cleanEmailHtml, cleanPandocMarkdown, convertHtmlToMarkdown, looksLikeEmailHtml, isFragmentHtml } from "../src/core/adapters/pandoc-html";
 import type { ExtractionResult, Extractor } from "../src/core/extraction";
 
 // --- Adapter dispatch ---
@@ -161,5 +161,118 @@ describe("convertHtmlToMarkdown (adapter)", () => {
     expect(result.content).toContain("|");
     expect(result.content).toContain("Name");
     expect(result.content).toContain("Alice");
+  });
+
+  test("returns engine field", async () => {
+    const html = "<h1>Title</h1><p>Paragraph</p>";
+    const result = await convertHtmlToMarkdown(html);
+    expect(result.engine).toBeDefined();
+    expect(typeof result.engine).toBe("string");
+  });
+});
+
+// --- HTML routing: looksLikeEmailHtml ---
+
+describe("looksLikeEmailHtml", () => {
+  test("returns true for MSO conditional comments", () => {
+    const html = '<!--[if gte mso 9]><xml></xml><![endif]--><p>Hello</p>';
+    expect(looksLikeEmailHtml(html)).toBe(true);
+  });
+
+  test("returns true for Office XML elements", () => {
+    const html = '<div><o:p>&nbsp;</o:p></div>';
+    expect(looksLikeEmailHtml(html)).toBe(true);
+  });
+
+  test("returns true for MsoNormal class", () => {
+    const html = '<p class="MsoNormal">Text</p>';
+    expect(looksLikeEmailHtml(html)).toBe(true);
+  });
+
+  test("returns false for article HTML", () => {
+    const html = '<html><body><article><h1>Title</h1><p>Content</p></article></body></html>';
+    expect(looksLikeEmailHtml(html)).toBe(false);
+  });
+
+  test("returns false for plain HTML", () => {
+    const html = '<div><h1>Hello</h1><p>World</p></div>';
+    expect(looksLikeEmailHtml(html)).toBe(false);
+  });
+});
+
+// --- HTML routing: isFragmentHtml ---
+
+describe("isFragmentHtml", () => {
+  test("returns true for short HTML without html/body tags", () => {
+    expect(isFragmentHtml("<p>Hello world</p>")).toBe(true);
+  });
+
+  test("returns true for short div fragment", () => {
+    expect(isFragmentHtml("<div><h1>Title</h1><p>Content</p></div>")).toBe(true);
+  });
+
+  test("returns false for full HTML page", () => {
+    const html = "<html><head></head><body><p>Content</p></body></html>";
+    expect(isFragmentHtml(html)).toBe(false);
+  });
+
+  test("returns false for long HTML without html tag", () => {
+    const html = "<p>" + "x".repeat(2000) + "</p>";
+    expect(isFragmentHtml(html)).toBe(false);
+  });
+});
+
+// --- HTML routing: Defuddle integration ---
+
+describe("convertHtmlToMarkdown routing", () => {
+  test("uses Defuddle for article HTML with nav/sidebar, returns defuddle_used warning", async () => {
+    const html = `
+      <html><head><title>Test</title></head><body>
+        <nav><a href="/">Home</a><a href="/about">About</a></nav>
+        <article>
+          <h1>Main Article</h1>
+          <p>This is the main content that should be extracted by Defuddle. It contains enough text to pass the minimum threshold for extraction quality.</p>
+          <p>Additional paragraph with more context about the topic being discussed in this article.</p>
+        </article>
+        <aside><h3>Related</h3><ul><li>Link 1</li></ul></aside>
+        <footer><p>Copyright 2024</p><a href="/privacy">Privacy Policy</a></footer>
+      </body></html>`;
+
+    const result = await convertHtmlToMarkdown(html);
+    expect(result.engine).toBe("defuddle+pandoc-html");
+    expect(result.warnings).toContain("defuddle_used");
+    expect(result.content).toContain("Main Article");
+  });
+
+  test("does NOT use Defuddle for email HTML", async () => {
+    const html = `
+      <!--[if gte mso 9]><xml><o:OfficeDocumentSettings></o:OfficeDocumentSettings></xml><![endif]-->
+      <div class="MsoNormal"><p>Meeting notes from today.</p></div>`;
+
+    const result = await convertHtmlToMarkdown(html);
+    expect(result.engine).toBe("pandoc-html");
+    expect(result.warnings).not.toContain("defuddle_used");
+  });
+
+  test("does NOT use Defuddle for short fragment HTML", async () => {
+    const html = "<h1>Title</h1><p>Short content</p>";
+    const result = await convertHtmlToMarkdown(html);
+    expect(result.engine).toBe("pandoc-html");
+    expect(result.warnings).not.toContain("defuddle_used");
+  });
+
+  test("skipDefuddle option bypasses Defuddle", async () => {
+    const html = `
+      <html><head><title>Test</title></head><body>
+        <article>
+          <h1>Article Title</h1>
+          <p>This is a sufficiently long article that would normally trigger Defuddle extraction in the pipeline.</p>
+          <p>Additional content to ensure the threshold is met for processing.</p>
+        </article>
+      </body></html>`;
+
+    const result = await convertHtmlToMarkdown(html, { skipDefuddle: true });
+    expect(result.engine).toBe("pandoc-html");
+    expect(result.warnings).not.toContain("defuddle_used");
   });
 });

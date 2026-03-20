@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Configuration Reference - StreamDB Docs</title></head>
+<body>
+<header class="docs-header">
+  <div class="docs-brand"><a href="/">StreamDB</a></div>
+  <nav class="docs-top-nav">
+    <a href="/docs">Docs</a>
+    <a href="/api">API Reference</a>
+    <a href="/blog">Blog</a>
+    <a href="/community">Community</a>
+    <a href="https://github.com/streamdb/streamdb">GitHub</a>
+  </nav>
+  <div class="version-selector">
+    <select>
+      <option selected>v3.2 (latest)</option>
+      <option>v3.1</option>
+      <option>v3.0</option>
+      <option>v2.x</option>
+    </select>
+  </div>
+  <div class="docs-search"><input type="search" placeholder="Search docs..."></div>
+</header>
+
+<div class="docs-layout">
+  <nav class="docs-sidebar">
+    <div class="sidebar-section">
+      <h4>Getting Started</h4>
+      <ul>
+        <li><a href="/docs/installation">Installation</a></li>
+        <li><a href="/docs/quickstart">Quick Start</a></li>
+        <li><a href="/docs/concepts">Core Concepts</a></li>
+      </ul>
+    </div>
+    <div class="sidebar-section">
+      <h4>Configuration</h4>
+      <ul>
+        <li><a href="/docs/config" class="active">Configuration Reference</a></li>
+        <li><a href="/docs/env-vars">Environment Variables</a></li>
+        <li><a href="/docs/clustering">Clustering</a></li>
+      </ul>
+    </div>
+    <div class="sidebar-section">
+      <h4>Operations</h4>
+      <ul>
+        <li><a href="/docs/monitoring">Monitoring</a></li>
+        <li><a href="/docs/backup">Backup & Recovery</a></li>
+        <li><a href="/docs/migration">Migration Guide</a></li>
+      </ul>
+    </div>
+  </nav>
+
+  <main class="docs-content">
+    <nav class="breadcrumbs">
+      <a href="/docs">Docs</a> &gt; <a href="/docs/config">Configuration</a> &gt; <span>Reference</span>
+    </nav>
+
+    <h1>Configuration Reference</h1>
+    <p>StreamDB is configured through a YAML file (<code>streamdb.yaml</code>) or environment variables. This page documents all available configuration options.</p>
+
+    <h2>Server Settings</h2>
+    <p>Core server configuration controls bind address, port, and connection limits.</p>
+
+    <pre><code class="language-yaml">server:
+  host: "0.0.0.0"
+  port: 8420
+  max_connections: 10000
+  idle_timeout: 300s</code></pre>
+
+    <table>
+      <thead>
+        <tr><th>Parameter</th><th>Type</th><th>Default</th><th>Description</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>server.host</code></td><td>string</td><td><code>"0.0.0.0"</code></td><td>Bind address for the server</td></tr>
+        <tr><td><code>server.port</code></td><td>integer</td><td><code>8420</code></td><td>TCP port number</td></tr>
+        <tr><td><code>server.max_connections</code></td><td>integer</td><td><code>10000</code></td><td>Maximum concurrent client connections</td></tr>
+        <tr><td><code>server.idle_timeout</code></td><td>duration</td><td><code>300s</code></td><td>Close idle connections after this duration</td></tr>
+      </tbody>
+    </table>
+
+    <h2>Storage Engine</h2>
+    <p>StreamDB supports two storage backends: <code>rocksdb</code> (default) and <code>memory</code>. The RocksDB backend provides durable persistence with configurable compaction.</p>
+
+    <pre><code class="language-yaml">storage:
+  engine: "rocksdb"
+  data_dir: "/var/lib/streamdb/data"
+  wal_dir: "/var/lib/streamdb/wal"
+  compaction:
+    style: "level"
+    max_bytes_for_level_base: "256MB"</code></pre>
+
+    <h3>Compaction Tuning</h3>
+    <p>Compaction settings significantly impact write amplification and read performance. For write-heavy workloads, consider using <code>universal</code> compaction style.</p>
+
+    <h2>Replication</h2>
+    <p>StreamDB uses Raft consensus for leader election and log replication across cluster nodes.</p>
+
+    <pre><code class="language-yaml">replication:
+  mode: "raft"
+  election_timeout: "1500ms"
+  heartbeat_interval: "150ms"
+  snapshot_interval: "10000"</code></pre>
+
+    <h3>Consistency Levels</h3>
+    <p>Reads can be served at different consistency levels:</p>
+    <ul>
+      <li><strong>strong</strong> — Linearizable reads, routed through the leader</li>
+      <li><strong>eventual</strong> — Reads from any replica, may be stale</li>
+      <li><strong>bounded</strong> — Reads guaranteed fresh within a configurable staleness window</li>
+    </ul>
+
+    <h2>Authentication</h2>
+    <p>StreamDB supports token-based authentication with configurable providers.</p>
+
+    <pre><code class="language-yaml">auth:
+  enabled: true
+  provider: "jwt"
+  jwt:
+    secret: "${STREAMDB_JWT_SECRET}"
+    algorithm: "HS256"
+    expiry: "24h"</code></pre>
+
+    <div class="docs-note">
+      <strong>Security Note:</strong> Always use environment variable interpolation for secrets. Never commit plain-text secrets to configuration files.
+    </div>
+
+    <div class="page-nav">
+      <a href="/docs/env-vars" class="next">Next: Environment Variables →</a>
+      <a href="/docs/concepts" class="prev">← Previous: Core Concepts</a>
+    </div>
+  </main>
+
+  <nav class="toc-sidebar">
+    <h4>On this page</h4>
+    <ul>
+      <li><a href="#server-settings">Server Settings</a></li>
+      <li><a href="#storage-engine">Storage Engine</a></li>
+      <li><a href="#replication">Replication</a></li>
+      <li><a href="#authentication">Authentication</a></li>
+    </ul>
+  </nav>
+</div>
+
+<footer class="docs-footer">
+  <div class="footer-links">
+    <a href="/privacy">Privacy Policy</a>
+    <a href="/terms">Terms of Service</a>
+    <a href="https://status.streamdb.io">Status</a>
+  </div>
+  <p>© 2026 StreamDB Inc. All rights reserved.</p>
+</footer>
+</body>
+</html>

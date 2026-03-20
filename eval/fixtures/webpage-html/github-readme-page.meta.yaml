@@ -1,0 +1,15 @@
+description: "GitHub repo page wrapping a README with repo chrome (stars, forks, tabs, sidebar)"
+expect:
+  minHeadings: 5
+  minTables: 1
+  mustContain:
+    - "fastcache"
+    - "Zero-allocation gets"
+    - "Sharded design"
+    - "language-go"
+  mustNotContain:
+    - "Star 3,241"
+    - "Fork 187"
+    - "Pull requests"
+    - "Marketplace"
+    - "Explore"

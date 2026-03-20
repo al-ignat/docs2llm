@@ -16,6 +16,7 @@ const DIMENSIONS: ScoringDimension[] = [
   "noise",
   "ocr",
   "links",
+  "contentExtraction",
 ];
 
 /** ANSI color helpers */

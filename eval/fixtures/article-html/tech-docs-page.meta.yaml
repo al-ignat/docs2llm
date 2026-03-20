@@ -1,0 +1,17 @@
+description: "Technical docs page with breadcrumbs, version selector, TOC sidebar, code examples"
+expect:
+  minHeadings: 5
+  minTables: 1
+  mustContain:
+    - "Configuration Reference"
+    - "server.host"
+    - "rocksdb"
+    - "Raft consensus"
+    - "language-yaml"
+  mustNotContain:
+    - "Privacy Policy"
+    - "Terms of Service"
+    - "All rights reserved"
+    - "Installation"
+    - "Quick Start"
+    - "Search docs"
