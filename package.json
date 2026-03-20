@@ -10,7 +10,12 @@
   "files": ["src/**/*.ts", "README.md", "LICENSE"],
   "scripts": {
     "build": "bun run scripts/build.ts",
-    "dev": "bun run src/commands/cli.ts"
+    "build:raycast": "bun run scripts/build-raycast.ts",
+    "dev": "bun run src/commands/cli.ts",
+    "test": "bun test",
+    "test:raycast": "npm --prefix raycast test",
+    "typecheck": "tsc --noEmit",
+    "verify": "bun run typecheck && bun test && npm --prefix raycast test && bun run build && bun run build:raycast"
   },
   "bin": {
     "docs2llm": "src/commands/cli.ts"
@@ -24,6 +29,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "bun-types": "^1.3.9"
+    "bun-types": "^1.3.9",
+    "typescript": "^5.8.2"
   }
 }

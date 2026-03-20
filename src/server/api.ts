@@ -22,23 +22,25 @@ import { MIME_MAP, guessMime } from "../core/mime";
 
 const SUPPORTED_FORMATS = Object.entries(MIME_MAP).map(([ext, mime]) => ({ ext, mime }));
 
-// --- Concurrency limiter for heavy conversion endpoints ---
-let activeConversions = 0;
 const MAX_CONCURRENT_CONVERSIONS = 3;
 
-async function withConversionLimit<T>(fn: () => Promise<T>): Promise<T | Response> {
-  if (activeConversions >= MAX_CONCURRENT_CONVERSIONS) {
-    return Response.json(
-      { error: "Server busy. Too many concurrent conversions." },
-      { status: 429 }
-    );
-  }
-  activeConversions++;
-  try {
-    return await fn();
-  } finally {
-    activeConversions--;
-  }
+function createConversionLimiter(maxConcurrent = MAX_CONCURRENT_CONVERSIONS) {
+  let activeConversions = 0;
+
+  return async function withConversionLimit<T>(fn: () => Promise<T>): Promise<T | Response> {
+    if (activeConversions >= maxConcurrent) {
+      return Response.json(
+        { error: "Server busy. Too many concurrent conversions." },
+        { status: 429 }
+      );
+    }
+    activeConversions++;
+    try {
+      return await fn();
+    } finally {
+      activeConversions--;
+    }
+  };
 }
 
 async function handleConvert(req: Request): Promise<Response> {
@@ -466,57 +468,63 @@ function withSecurityHeaders(response: Response, extra?: Record<string, string>)
   return response;
 }
 
+export function createApiFetchHandler(): (req: Request) => Promise<Response> {
+  const withConversionLimit = createConversionLimiter();
+
+  return async function handleRequest(req: Request): Promise<Response> {
+    const url = new URL(req.url);
+
+    if (url.pathname === "/" && req.method === "GET") {
+      return withSecurityHeaders(
+        new Response(HTML, { headers: { "Content-Type": "text/html; charset=utf-8" } }),
+        HTML_SECURITY_HEADERS,
+      );
+    }
+
+    // Route to handler
+    let response: Response | undefined;
+
+    if (url.pathname === "/convert" && req.method === "POST") {
+      response = await withConversionLimit(() => handleConvert(req));
+    } else if (url.pathname === "/convert/url" && req.method === "POST") {
+      response = await withConversionLimit(() => handleConvertUrl(req));
+    } else if (url.pathname === "/convert/clipboard" && req.method === "POST") {
+      response = await handleConvertClipboard(req);
+    } else if (url.pathname === "/formats" && req.method === "GET") {
+      response = handleFormats();
+    } else if (url.pathname === "/convert/outbound" && req.method === "POST") {
+      response = await withConversionLimit(() => handleConvertOutbound(req));
+    } else if (url.pathname === "/config/templates" && req.method === "GET") {
+      response = handleGetTemplates();
+    } else if (url.pathname === "/config/templates" && req.method === "POST") {
+      response = await handleCreateTemplate(req);
+    } else if (url.pathname.startsWith("/config/templates/") && req.method === "DELETE") {
+      const tplName = decodeURIComponent(url.pathname.slice("/config/templates/".length));
+      response = await handleDeleteTemplate(tplName);
+    } else if (url.pathname === "/config" && req.method === "GET") {
+      response = handleGetConfig();
+    } else if (url.pathname === "/config" && req.method === "PUT") {
+      response = await handlePutConfig(req);
+    }
+
+    if (!response) {
+      response = Response.json({ error: "Not found" }, { status: 404 });
+    }
+
+    return withSecurityHeaders(response);
+  };
+}
+
 export function startServer(port = 3000): { port: number; stop: () => void } {
+  const fetchHandler = createApiFetchHandler();
   const server = Bun.serve({
     port,
     hostname: "127.0.0.1",
     maxRequestBodySize: MAX_INPUT_BYTES,
-    async fetch(req) {
-      const url = new URL(req.url);
-
-      if (url.pathname === "/" && req.method === "GET") {
-        return withSecurityHeaders(
-          new Response(HTML, { headers: { "Content-Type": "text/html; charset=utf-8" } }),
-          HTML_SECURITY_HEADERS,
-        );
-      }
-
-      // Route to handler
-      let response: Response | undefined;
-
-      if (url.pathname === "/convert" && req.method === "POST") {
-        response = await withConversionLimit(() => handleConvert(req));
-      } else if (url.pathname === "/convert/url" && req.method === "POST") {
-        response = await withConversionLimit(() => handleConvertUrl(req));
-      } else if (url.pathname === "/convert/clipboard" && req.method === "POST") {
-        response = await handleConvertClipboard(req);
-      } else if (url.pathname === "/formats" && req.method === "GET") {
-        response = handleFormats();
-      } else if (url.pathname === "/convert/outbound" && req.method === "POST") {
-        response = await withConversionLimit(() => handleConvertOutbound(req));
-      } else if (url.pathname === "/config/templates" && req.method === "GET") {
-        response = handleGetTemplates();
-      } else if (url.pathname === "/config/templates" && req.method === "POST") {
-        response = await handleCreateTemplate(req);
-      } else if (url.pathname.startsWith("/config/templates/") && req.method === "DELETE") {
-        const tplName = decodeURIComponent(url.pathname.slice("/config/templates/".length));
-        response = await handleDeleteTemplate(tplName);
-      } else if (url.pathname === "/config" && req.method === "GET") {
-        response = handleGetConfig();
-      } else if (url.pathname === "/config" && req.method === "PUT") {
-        response = await handlePutConfig(req);
-      }
-
-      if (!response) {
-        response = Response.json({ error: "Not found" }, { status: 404 });
-      }
-
-      return withSecurityHeaders(response);
-    },
+    fetch: fetchHandler,
   });
 
   const actualPort = server.port;
   console.log(`docs2llm server running at http://localhost:${actualPort}`);
   return { port: actualPort ?? port, stop: () => server.stop() };
 }
-

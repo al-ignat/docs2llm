@@ -239,6 +239,21 @@ Options:
 `);
 }
 
+function startUiServerWithFallback(): { port: number; stop: () => void } {
+  const candidatePorts = Array.from({ length: 11 }, (_, i) => 3000 + i);
+  let lastError: unknown;
+
+  for (const port of candidatePorts) {
+    try {
+      return startServer(port);
+    } catch (err) {
+      lastError = err;
+    }
+  }
+
+  throw lastError ?? new Error("Failed to start docs2llm web UI.");
+}
+
 function printFormats() {
   console.log(`
 docs2llm — Supported formats
@@ -306,12 +321,7 @@ async function main() {
     return;
   }
   if (command === "open") {
-    let server;
-    try {
-      server = startServer(3000);
-    } catch {
-      server = startServer(0);
-    }
+    const server = startUiServerWithFallback();
     const url = `http://localhost:${server.port}`;
     if (process.platform === "darwin") {
       Bun.spawn(["open", url], { stdout: "ignore", stderr: "ignore" });
