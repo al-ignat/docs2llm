@@ -16,6 +16,7 @@ import {
 import { runInit } from "./init";
 import { runConfigWizard } from "./config-wizard";
 import { runPaste, type PasteOptions } from "./paste";
+import { runPush, type PushOptions } from "./push";
 import { startServer } from "../server/api";
 import { startWatcher } from "./watch";
 import { startMcpServer } from "../server/mcp";
@@ -51,7 +52,7 @@ function parseArgs(argv: string[]) {
   let chunkSize: number | null = null;
 
   // Check for subcommand as first positional arg
-  if (args.length > 0 && (args[0] === "init" || args[0] === "config" || args[0] === "paste" || args[0] === "open" || args[0] === "formats" || args[0] === "watch" || args[0] === "serve")) {
+  if (args.length > 0 && (args[0] === "init" || args[0] === "config" || args[0] === "paste" || args[0] === "push" || args[0] === "open" || args[0] === "formats" || args[0] === "watch" || args[0] === "serve")) {
     command = args[0];
     for (let i = 1; i < args.length; i++) {
       if (args[i] === "--global") isGlobal = true;
@@ -69,7 +70,21 @@ function parseArgs(argv: string[]) {
           }
         }
       }
-      return { input, format, output, formatExplicit, force, pandocArgs, command, template, isGlobal, pasteOpts, watchTo };
+      return { input, format, output, formatExplicit, force, pandocArgs, command, template, isGlobal, pasteOpts, pushOpts: undefined, watchTo };
+    }
+    if (command === "push") {
+      const pushOpts: PushOptions = {};
+      for (let i = 1; i < args.length; i++) {
+        if (args[i] === "--stdout") pushOpts.stdout = true;
+        else if (args[i] === "-o" || args[i] === "--output") {
+          pushOpts.output = args[++i];
+          if (!pushOpts.output) {
+            console.error("Missing output path.");
+            process.exit(1);
+          }
+        }
+      }
+      return { input, format, output, formatExplicit, force, pandocArgs, command, template, isGlobal, pasteOpts: undefined, pushOpts, watchTo };
     }
     if (command === "watch") {
       // docs2llm watch <dir> --to <dir>
@@ -80,9 +95,9 @@ function parseArgs(argv: string[]) {
           input = args[i];
         }
       }
-      return { input, format, output, formatExplicit, force, pandocArgs, command, template, isGlobal, pasteOpts: undefined, watchTo };
+      return { input, format, output, formatExplicit, force, pandocArgs, command, template, isGlobal, pasteOpts: undefined, pushOpts: undefined, watchTo };
     }
-    return { input, format, output, formatExplicit, force, pandocArgs, command, template, isGlobal, pasteOpts: undefined, watchTo };
+    return { input, format, output, formatExplicit, force, pandocArgs, command, template, isGlobal, pasteOpts: undefined, pushOpts: undefined, watchTo };
   }
 
   for (let i = 0; i < args.length; i++) {
@@ -169,7 +184,7 @@ function parseArgs(argv: string[]) {
     }
   }
 
-  return { input, format, output, formatExplicit, force, pandocArgs, command, template, isGlobal, ocr, pasteOpts: undefined as PasteOptions | undefined, watchTo: null as string | null, useStdin, useStdout, chunks, chunkSize, yes, json, quiet };
+  return { input, format, output, formatExplicit, force, pandocArgs, command, template, isGlobal, ocr, pasteOpts: undefined as PasteOptions | undefined, pushOpts: undefined as PushOptions | undefined, watchTo: null as string | null, useStdin, useStdout, chunks, chunkSize, yes, json, quiet };
 }
 
 function printHelp() {
@@ -190,10 +205,13 @@ Usage:
   docs2llm notes.md -f html         Convert .md to HTML
 
   Clipboard:
-  docs2llm paste                    Clipboard → Markdown (interactive)
+  docs2llm paste                    Clipboard HTML → Markdown (interactive)
   docs2llm paste --copy             Convert and copy back to clipboard
   docs2llm paste --stdout           Convert and print to terminal
   docs2llm paste -o <file>          Convert and save to file
+  docs2llm push                     Clipboard Markdown → rich HTML (interactive)
+  docs2llm push --stdout            Convert and print to terminal
+  docs2llm push -o <file>           Convert and save to file
 
   Piping:
   cat report.pdf | docs2llm --stdin           Read from stdin
@@ -296,7 +314,7 @@ Tip: most source code files are also supported.
 }
 
 async function main() {
-  const { input, format, output, formatExplicit, force, pandocArgs, command, template, isGlobal, ocr, pasteOpts, watchTo, useStdin, useStdout, chunks, chunkSize, yes = false, json = false, quiet = false } =
+  const { input, format, output, formatExplicit, force, pandocArgs, command, template, isGlobal, ocr, pasteOpts, pushOpts, watchTo, useStdin, useStdout, chunks, chunkSize, yes = false, json = false, quiet = false } =
     parseArgs(Bun.argv);
 
   // --json implies --yes, --yes implies --force
@@ -314,6 +332,10 @@ async function main() {
   }
   if (command === "paste") {
     await runPaste(pasteOpts ?? {});
+    return;
+  }
+  if (command === "push") {
+    await runPush(pushOpts ?? {});
     return;
   }
   if (command === "formats") {

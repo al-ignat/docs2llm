@@ -95,6 +95,11 @@ function mockPaths(...paths: string[]) {
   mocks.existsSync.mockImplementation((p: string) => set.has(p));
 }
 
+/** Fake stdin that accepts write/end calls (for Pandoc stdin piping). */
+function fakeStdin() {
+  return { write: vi.fn(), end: vi.fn() };
+}
+
 /** Mock execFile to invoke callback with stdout. */
 function mockExecSuccess(stdout: string) {
   mocks.execFile.mockImplementation(
@@ -105,6 +110,7 @@ function mockExecSuccess(stdout: string) {
       cb: (err: Error | null, stdout: string, stderr: string) => void,
     ) => {
       cb(null, stdout, "");
+      return { stdin: fakeStdin() };
     },
   );
 }
@@ -119,6 +125,7 @@ function mockExecError(stderr: string) {
       cb: (err: Error | null, stdout: string, stderr: string) => void,
     ) => {
       cb(new Error("command failed"), "", stderr);
+      return { stdin: fakeStdin() };
     },
   );
 }
@@ -441,52 +448,45 @@ describe("docs2llm CLI integration", () => {
     });
 
     describe("exportToHtml()", () => {
-      const htmlPath = "/mock/tmp/export/notes.html";
-
-      beforeEach(() => {
-        mockPaths(BINARY, htmlPath);
-      });
-
-      it("reads HTML file and cleans up temp", async () => {
-        mockExecSuccess(JSON.stringify({ output: htmlPath }));
-        mocks.readFileSync.mockReturnValue("<h1>Notes</h1>");
+      it("reads file and delegates to convertToHtmlFromText", async () => {
+        const pandocPath = "/usr/local/bin/pandoc";
+        mockPaths(pandocPath);
+        mocks.readFileSync.mockReturnValue("# Notes");
+        mockExecSuccess("<h1>Notes</h1>");
 
         const result = await exportToHtml("/docs/notes.md");
 
         expect(result).toEqual({ html: "<h1>Notes</h1>" });
-        expect(mocks.readFileSync).toHaveBeenCalledWith(htmlPath, "utf-8");
-        expect(mocks.unlinkSync).toHaveBeenCalledWith(htmlPath);
-      });
-
-      it("returns error when output file not found", async () => {
-        mockExecSuccess("{}"); // JSON with no output field
-        // htmlPath not in existsSync for the fallback candidate either
-        mockPaths(BINARY);
-
-        const result = await exportToHtml("/docs/notes.md");
-
-        expect(result.error).toMatch(/not found/i);
+        expect(mocks.readFileSync).toHaveBeenCalledWith("/docs/notes.md", "utf-8");
       });
     });
 
     describe("convertToHtmlFromText()", () => {
-      it("writes temp .md, delegates to exportToHtml, cleans up", async () => {
-        const htmlOut = "/mock/tmp/result.html";
-        mockPaths(BINARY, htmlOut);
-        mockExecSuccess(JSON.stringify({ output: htmlOut }));
-        mocks.readFileSync.mockReturnValue("<p>content</p>");
+      it("calls Pandoc directly via stdin/stdout for HTML fragment", async () => {
+        const pandocPath = "/usr/local/bin/pandoc";
+        mockPaths(pandocPath);
+        mockExecSuccess("<p><strong>content</strong></p>");
 
         const result = await convertToHtmlFromText("some **markdown**");
 
-        expect(result).toEqual({ html: "<p>content</p>" });
-        // Temp .md was written
-        expect(mocks.writeFileSync).toHaveBeenCalledWith(
-          expect.stringContaining("docs2llm-md-"),
-          "some **markdown**",
-          "utf-8",
+        expect(result).toEqual({ html: "<p><strong>content</strong></p>" });
+        // Pandoc called directly (not via docs2llm binary)
+        expect(mocks.execFile).toHaveBeenCalledWith(
+          pandocPath,
+          ["-f", "markdown", "-t", "html", "--wrap=none"],
+          expect.any(Object),
+          expect.any(Function),
         );
-        // Cleanup happened (temp .md + html output)
-        expect(mocks.unlinkSync).toHaveBeenCalledTimes(2);
+      });
+
+      it("returns error when Pandoc fails", async () => {
+        const pandocPath = "/usr/local/bin/pandoc";
+        mockPaths(pandocPath);
+        mockExecError("pandoc: Unknown reader: md");
+
+        const result = await convertToHtmlFromText("some text");
+
+        expect(result.error).toMatch(/Pandoc failed/);
       });
     });
 

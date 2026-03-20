@@ -23,6 +23,21 @@ export async function writeClipboard(text: string): Promise<void> {
   return writeClipboardLinux(text);
 }
 
+/**
+ * Write both HTML and plain-text flavors to the clipboard.
+ * This lets rich text editors (Outlook, Google Docs) paste formatted content.
+ */
+export async function writeClipboardHtml(html: string, plaintext: string): Promise<void> {
+  if (process.platform === "darwin") {
+    return writeClipboardHtmlMac(html, plaintext);
+  }
+  if (process.platform === "linux") {
+    return writeClipboardHtmlLinux(html, plaintext);
+  }
+  // Windows / fallback: plain text only
+  return writeClipboard(plaintext);
+}
+
 // --- macOS ---
 
 async function readClipboardMac(): Promise<ClipboardContent> {
@@ -53,6 +68,32 @@ async function writeClipboardMac(text: string): Promise<void> {
   proc.stdin.write(text);
   proc.stdin.end();
   await proc.exited;
+}
+
+async function writeClipboardHtmlMac(html: string, plaintext: string): Promise<void> {
+  // Use Swift to set both HTML and plain text flavors on NSPasteboard.
+  // The string is passed via stdin to avoid shell escaping issues.
+  const swift = `
+import AppKit
+import Foundation
+let data = FileHandle.standardInput.readDataToEndOfFile()
+let json = try! JSONSerialization.jsonObject(with: data) as! [String: String]
+let pb = NSPasteboard.general
+pb.clearContents()
+pb.setString(json["html"]!, forType: .html)
+pb.setString(json["text"]!, forType: .string)
+`;
+  const proc = Bun.spawn(["swift", "-e", swift], {
+    stdin: "pipe", stdout: "pipe", stderr: "pipe",
+  });
+  proc.stdin.write(JSON.stringify({ html, text: plaintext }));
+  proc.stdin.end();
+
+  const code = await proc.exited;
+  if (code !== 0) {
+    const stderr = await new Response(proc.stderr).text();
+    throw new Error(`Failed to write HTML to clipboard: ${stderr.trim()}`);
+  }
 }
 
 // --- Linux ---
@@ -116,6 +157,24 @@ async function writeClipboardLinux(text: string): Promise<void> {
   proc.stdin.write(text);
   proc.stdin.end();
   await proc.exited;
+}
+
+async function writeClipboardHtmlLinux(html: string, plaintext: string): Promise<void> {
+  const cmd = await findLinuxClipCmd();
+
+  if (cmd === "xclip") {
+    // xclip supports setting specific MIME types
+    const htmlProc = Bun.spawn(
+      ["xclip", "-selection", "clipboard", "-t", "text/html"],
+      { stdin: "pipe" }
+    );
+    htmlProc.stdin.write(html);
+    htmlProc.stdin.end();
+    await htmlProc.exited;
+  } else {
+    // xsel doesn't support MIME types — fall back to plain text
+    await writeClipboardLinux(plaintext);
+  }
 }
 
 // --- Windows ---
