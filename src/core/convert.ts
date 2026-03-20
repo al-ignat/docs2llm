@@ -1,8 +1,24 @@
 import { stringify as yamlStringify } from "yaml";
 import { extname } from "path";
-import { convertMarkdownTo, checkPandoc, type OutboundFormat } from "./outbound";
+import { convertMarkdownTo, type OutboundFormat } from "./outbound";
 import { countWords, estimateTokens } from "./tokens";
 import { OUTBOUND_FORMATS } from "./validate";
+import { guessMime } from "./mime";
+import { getExtractor } from "./adapters";
+import { getKreuzberg, buildExtractionConfig } from "./adapters/kreuzberg";
+
+// Re-exports for backward compatibility — these moved to adapters
+export { cleanEmailHtml, cleanPandocMarkdown } from "./adapters/pandoc-html";
+import { convertHtmlToMarkdown as _convertHtmlToMarkdown } from "./adapters/pandoc-html";
+
+/**
+ * Convert HTML string to Markdown. Pandoc-first with Kreuzberg fallback.
+ * Re-exported from adapters/pandoc-html for backward compat.
+ */
+export async function convertHtmlToMarkdown(html: string): Promise<string> {
+  const { content } = await _convertHtmlToMarkdown(html);
+  return content;
+}
 
 export type OutputFormat = "md" | "json" | "yaml" | "docx" | "pptx" | "html";
 
@@ -19,69 +35,13 @@ export interface ConversionResult {
   mimeType: string;
   outputPath?: string;
   qualityScore?: number | null;
+  engine?: string;
 }
 
 export interface ConvertOptions {
   outputDir?: string;
   pandocArgs?: string[];
   ocr?: OcrOptions;
-}
-
-interface ExtractionResult {
-  content: string;
-  mimeType: string;
-  metadata: Record<string, unknown>;
-  qualityScore?: number | null;
-}
-
-type ExtractFileFn = (path: string, mime: any, config?: any) => Promise<ExtractionResult>;
-type ExtractBytesFn = (data: Uint8Array, mimeType: string, config?: any) => Promise<ExtractionResult>;
-
-interface KreuzbergModule {
-  extractFile: ExtractFileFn;
-  extractBytes: ExtractBytesFn;
-  isWasm: boolean;
-}
-
-let kreuzbergPromise: Promise<KreuzbergModule> | null = null;
-
-async function loadKreuzberg(): Promise<KreuzbergModule> {
-  try {
-    const mod = await import("@kreuzberg/node");
-    return { extractFile: mod.extractFile, extractBytes: mod.extractBytes, isWasm: false };
-  } catch {
-    const wasm = await import("@kreuzberg/wasm");
-    await wasm.initWasm();
-    return { extractFile: wasm.extractFile, extractBytes: wasm.extractBytes, isWasm: true };
-  }
-}
-
-function getKreuzberg(): Promise<KreuzbergModule> {
-  if (!kreuzbergPromise) {
-    kreuzbergPromise = loadKreuzberg();
-  }
-  return kreuzbergPromise;
-}
-
-
-function buildExtractionConfig(ocr: OcrOptions | undefined, isWasm: boolean): Record<string, unknown> {
-  const config: Record<string, unknown> = {
-    outputFormat: "markdown",
-    enableQualityProcessing: true,
-  };
-
-  if (ocr?.enabled || ocr?.force) {
-    config.ocr = {
-      backend: isWasm ? "tesseract-wasm" : "tesseract",
-      ...(ocr.language ? { language: ocr.language } : {}),
-    };
-  }
-
-  if (ocr?.force) {
-    config.forceOcr = true;
-  }
-
-  return config;
 }
 
 export async function convertBytes(
@@ -91,106 +51,6 @@ export async function convertBytes(
 ): Promise<{ content: string; mimeType: string; metadata: Record<string, unknown>; qualityScore?: number | null }> {
   const mod = await getKreuzberg();
   return mod.extractBytes(data, mimeType, buildExtractionConfig(ocr, mod.isWasm));
-}
-
-export async function convertHtmlToMarkdown(html: string): Promise<string> {
-  html = cleanEmailHtml(html);
-
-  // Prefer Pandoc: handles rowspan/colspan, multi-line cells via grid tables
-  try {
-    if (await checkPandoc()) {
-      return await pandocHtmlToMarkdown(html);
-    }
-  } catch {
-    // Pandoc failed — fall back to Kreuzberg
-  }
-
-  // Fallback: Kreuzberg (handles simple tables, no merged cell support)
-  const mod = await getKreuzberg();
-  const buffer = new TextEncoder().encode(html);
-  const result = await mod.extractBytes(buffer, "text/html", {
-    outputFormat: "markdown",
-    htmlOptions: {
-      preprocessing: {
-        enabled: true,
-        preset: "aggressive",
-        removeNavigation: true,
-        removeForms: true,
-      },
-    },
-  });
-  return result.content;
-}
-
-/** Strip Outlook/email-specific HTML cruft before conversion. */
-export function cleanEmailHtml(html: string): string {
-  return html
-    // MSO conditional comments: <!--[if gte mso 9]>...<![endif]-->
-    .replace(/<!--\[if[\s\S]*?<!\[endif\]-->/gi, "")
-    // Orphaned endif comments
-    .replace(/<!\[endif\]-->/gi, "")
-    // MSO XML elements: <o:p>, <o:OfficeDocumentSettings>, etc.
-    .replace(/<o:[^>]*(?:\/>|>[\s\S]*?<\/o:[^>]*>)/gi, "")
-    // Embedded XML blocks
-    .replace(/<xml>[\s\S]*?<\/xml>/gi, "")
-    // MSO-specific classes (no semantic value)
-    .replace(/ class="Mso[^"]*"/gi, "");
-}
-
-const PANDOC_HTML_TIMEOUT_MS = 30_000;
-
-async function pandocHtmlToMarkdown(html: string): Promise<string> {
-  const proc = Bun.spawn([
-    "pandoc",
-    "-f", "html",
-    "-t", "markdown+pipe_tables-simple_tables-multiline_tables-raw_html-native_divs-native_spans-header_attributes-bracketed_spans-fenced_divs",
-    "--wrap=none",
-  ], { stdin: "pipe", stdout: "pipe", stderr: "pipe" });
-
-  proc.stdin.write(html);
-  proc.stdin.end();
-
-  const timeout = setTimeout(() => proc.kill(), PANDOC_HTML_TIMEOUT_MS);
-  const [stdout, stderr] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-  ]);
-  const code = await proc.exited;
-  clearTimeout(timeout);
-
-  if (code !== 0) {
-    throw new Error(`Pandoc HTML conversion failed (exit ${code}): ${stderr.trim()}`);
-  }
-
-  return cleanPandocMarkdown(stdout);
-}
-
-/** Post-process Pandoc markdown output for clean LLM consumption. */
-export function cleanPandocMarkdown(md: string): string {
-  return md
-    // Unwrap Pandoc bracketed spans: [text]{style="..."} or [text]{.class} → text
-    .replace(/\[([^\]]*)\]\{[^}]*\}/g, "$1")
-    // Strip remaining standalone attribute blocks: {style="..."}, {.class}, {}
-    .replace(/\s*\{[^}]*\}/g, "")
-    // Remove fenced div markers (::: ...)
-    .replace(/^:::\s*.*$/gm, "")
-    // Unescape common Pandoc escapes (dollar, at-sign, percent, tilde, hash)
-    .replace(/\\\$/g, "$")
-    .replace(/\\@/g, "@")
-    .replace(/\\%/g, "%")
-    .replace(/\\~/g, "~")
-    .replace(/\\#/g, "#")
-    // Remove trailing hard line breaks (\ at end of line)
-    .replace(/\\\s*$/gm, "")
-    // Remove orphaned bold markers (** or ** ** on their own line)
-    .replace(/^\*\*\s*\*?\*?\s*$/gm, "")
-    // Remove inline bold-wrapped whitespace: ** ** → single space (Outlook <b> </b> artifacts)
-    .replace(/\*\*\s+\*\*/g, " ")
-    // Strip NBSP-only lines (Outlook &nbsp; spacers)
-    .replace(/^\u00A0+$/gm, "")
-    // Clean up excessive blank lines
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
 }
 
 export async function convertFile(
@@ -216,29 +76,23 @@ export async function convertFile(
     };
   }
 
-  // HTML files: use enhanced pipeline (Pandoc for merged tables, email cleanup)
+  // Inbound: delegate to adapter
   const ext = extname(filePath).toLowerCase();
-  if (ext === ".html" || ext === ".htm") {
-    const html = await Bun.file(filePath).text();
-    const content = await convertHtmlToMarkdown(html);
-    const formatted = formatOutput(content, filePath, "text/html", {}, format);
-    return { content, formatted, sourcePath: filePath, mimeType: "text/html" };
-  }
+  const mime = (ext === ".html" || ext === ".htm") ? "text/html" : guessMime(filePath);
+  const extractor = getExtractor(mime);
+  const result = await extractor.extractFile(filePath, { ocr: options?.ocr });
 
-  // Inbound: documents → text via Kreuzberg
-  const mod = await getKreuzberg();
-  const config = buildExtractionConfig(options?.ocr, mod.isWasm);
-  const result = await mod.extractFile(filePath, null, config);
-
-  const textContent = result.content;
-  const formatted = formatOutput(textContent, filePath, result.mimeType, result.metadata, format, result.qualityScore);
+  const formatted = formatOutput(
+    result.contentMarkdown, filePath, result.mimeType, result.metadata, format, result.quality.score,
+  );
 
   return {
-    content: textContent,
+    content: result.contentMarkdown,
     formatted,
     sourcePath: filePath,
     mimeType: result.mimeType,
-    qualityScore: result.qualityScore,
+    qualityScore: result.quality.score,
+    engine: result.engine,
   };
 }
 
