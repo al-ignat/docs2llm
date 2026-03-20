@@ -7,7 +7,7 @@
  */
 
 // Engine identifiers (extensible for Defuddle, Docling, etc.)
-export type EngineName = "kreuzberg" | "kreuzberg-wasm" | "pandoc-html";
+export type EngineName = "kreuzberg" | "kreuzberg-wasm" | "pandoc-html" | "defuddle+pandoc-html";
 
 // How the source was provided
 export type SourceType = "file" | "bytes" | "html-string" | "url";
@@ -33,7 +33,9 @@ export type ExtractionWarning =
   | "tesseract_missing_scanned"
   | "scanned_pdf_detected"
   | "pandoc_fallback_to_kreuzberg"
-  | "pandoc_not_available";
+  | "pandoc_not_available"
+  | "defuddle_used"
+  | "defuddle_empty_fallback";
 
 // === The normalized result contract ===
 export interface ExtractionResult {
