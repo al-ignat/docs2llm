@@ -5,6 +5,7 @@ CLAUDE.md
 .docs2llm.yaml
 .con-the-doc.yaml
 .kreuzberg/
+.tmp/
 
 # Build output
 /docs2llm

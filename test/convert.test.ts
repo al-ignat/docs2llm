@@ -277,7 +277,7 @@ describe("convertHtmlToMarkdown", () => {
     expect(result).toContain("30");
   });
 
-  test("converts table with rowspan/colspan to grid table", async () => {
+  test("converts table with rowspan/colspan to table (grid or pipe)", async () => {
     const html = [
       '<table border="1">',
       '<tr><td rowspan="2">Category</td><td colspan="2">Q4</td></tr>',
@@ -286,8 +286,8 @@ describe("convertHtmlToMarkdown", () => {
       '</table>',
     ].join("");
     const result = await convertHtmlToMarkdown(html);
-    // Grid table uses + for corners
-    expect(result).toContain("+");
+    // Pandoc ≥3.9 emits grid tables (+), older versions emit pipe tables (|)
+    expect(result).toMatch(/[+|]/);
     expect(result).toContain("Category");
     expect(result).toContain("Revenue");
     expect(result).toContain("Product A");

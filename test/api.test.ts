@@ -1,23 +1,17 @@
-import { describe, expect, test, beforeAll, afterAll } from "bun:test";
-import { startServer } from "../src/server/api";
+import { describe, expect, test } from "bun:test";
+import { createApiFetchHandler } from "../src/server/api";
 
-let server: { port: number; stop: () => void };
-let base: string;
+const handleRequest = createApiFetchHandler();
 
-beforeAll(() => {
-  server = startServer(0); // random port
-  base = `http://127.0.0.1:${server.port}`;
-});
-
-afterAll(() => {
-  server.stop();
-});
+function apiFetch(path: string, init?: RequestInit): Promise<Response> {
+  return handleRequest(new Request(`http://localhost${path}`, init));
+}
 
 // --- Security headers ---
 
 describe("security headers", () => {
   test("GET / returns HTML security headers", async () => {
-    const res = await fetch(`${base}/`);
+    const res = await apiFetch("/");
     expect(res.status).toBe(200);
     expect(res.headers.get("X-Content-Type-Options")).toBe("nosniff");
     expect(res.headers.get("X-Frame-Options")).toBe("DENY");
@@ -26,12 +20,12 @@ describe("security headers", () => {
   });
 
   test("GET /formats returns nosniff header", async () => {
-    const res = await fetch(`${base}/formats`);
+    const res = await apiFetch("/formats");
     expect(res.headers.get("X-Content-Type-Options")).toBe("nosniff");
   });
 
   test("404 returns nosniff header", async () => {
-    const res = await fetch(`${base}/unknown`);
+    const res = await apiFetch("/unknown");
     expect(res.headers.get("X-Content-Type-Options")).toBe("nosniff");
   });
 });
@@ -40,7 +34,7 @@ describe("security headers", () => {
 
 describe("GET /", () => {
   test("returns 200 with HTML content", async () => {
-    const res = await fetch(`${base}/`);
+    const res = await apiFetch("/");
     expect(res.status).toBe(200);
     expect(res.headers.get("Content-Type")).toContain("text/html");
     const html = await res.text();
@@ -52,7 +46,7 @@ describe("GET /", () => {
 
 describe("GET /formats", () => {
   test("returns 200 with formats array", async () => {
-    const res = await fetch(`${base}/formats`);
+    const res = await apiFetch("/formats");
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(Array.isArray(json.formats)).toBe(true);
@@ -68,7 +62,7 @@ describe("GET /formats", () => {
 describe("POST /convert", () => {
   test("returns 400 on missing file", async () => {
     const form = new FormData();
-    const res = await fetch(`${base}/convert`, { method: "POST", body: form });
+    const res = await apiFetch("/convert", { method: "POST", body: form });
     expect(res.status).toBe(400);
     const json = await res.json();
     expect(json.error).toBeDefined();
@@ -77,7 +71,7 @@ describe("POST /convert", () => {
   test("returns 200 on valid text file", async () => {
     const form = new FormData();
     form.append("file", new File(["Hello world, this is a test document."], "test.txt", { type: "text/plain" }));
-    const res = await fetch(`${base}/convert`, { method: "POST", body: form });
+    const res = await apiFetch("/convert", { method: "POST", body: form });
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.content).toBeDefined();
@@ -88,7 +82,7 @@ describe("POST /convert", () => {
   });
 
   test("returns 400 on invalid form data", async () => {
-    const res = await fetch(`${base}/convert`, {
+    const res = await apiFetch("/convert", {
       method: "POST",
       body: "not form data",
       headers: { "Content-Type": "text/plain" },
@@ -101,7 +95,7 @@ describe("POST /convert", () => {
 
 describe("POST /convert/url", () => {
   test("returns 400 on missing URL", async () => {
-    const res = await fetch(`${base}/convert/url`, {
+    const res = await apiFetch("/convert/url", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({}),
@@ -112,7 +106,7 @@ describe("POST /convert/url", () => {
   });
 
   test("returns 400 on invalid JSON body", async () => {
-    const res = await fetch(`${base}/convert/url`, {
+    const res = await apiFetch("/convert/url", {
       method: "POST",
       body: "not json",
       headers: { "Content-Type": "application/json" },
@@ -123,7 +117,7 @@ describe("POST /convert/url", () => {
   });
 
   test("returns 400 on blocked URL scheme", async () => {
-    const res = await fetch(`${base}/convert/url`, {
+    const res = await apiFetch("/convert/url", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ url: "file:///etc/passwd" }),
@@ -138,7 +132,7 @@ describe("POST /convert/url", () => {
 
 describe("POST /convert/clipboard", () => {
   test("returns 400 on empty body", async () => {
-    const res = await fetch(`${base}/convert/clipboard`, {
+    const res = await apiFetch("/convert/clipboard", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({}),
@@ -149,7 +143,7 @@ describe("POST /convert/clipboard", () => {
   });
 
   test("returns 200 on plain text input", async () => {
-    const res = await fetch(`${base}/convert/clipboard`, {
+    const res = await apiFetch("/convert/clipboard", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text: "Hello clipboard world" }),
@@ -163,7 +157,7 @@ describe("POST /convert/clipboard", () => {
   });
 
   test("returns 200 on HTML input", async () => {
-    const res = await fetch(`${base}/convert/clipboard`, {
+    const res = await apiFetch("/convert/clipboard", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ html: "<p>Hello <strong>bold</strong> world</p>" }),
@@ -175,7 +169,7 @@ describe("POST /convert/clipboard", () => {
   });
 
   test("returns 400 on invalid JSON", async () => {
-    const res = await fetch(`${base}/convert/clipboard`, {
+    const res = await apiFetch("/convert/clipboard", {
       method: "POST",
       body: "not json",
       headers: { "Content-Type": "application/json" },
@@ -190,7 +184,7 @@ describe("POST /convert/outbound", () => {
   test("returns 400 on missing file", async () => {
     const form = new FormData();
     form.append("format", "docx");
-    const res = await fetch(`${base}/convert/outbound`, { method: "POST", body: form });
+    const res = await apiFetch("/convert/outbound", { method: "POST", body: form });
     expect(res.status).toBe(400);
     const json = await res.json();
     expect(json.error).toContain("No file");
@@ -200,7 +194,7 @@ describe("POST /convert/outbound", () => {
     const form = new FormData();
     form.append("file", new File(["# Hello"], "test.md", { type: "text/markdown" }));
     form.append("format", "pdf");
-    const res = await fetch(`${base}/convert/outbound`, { method: "POST", body: form });
+    const res = await apiFetch("/convert/outbound", { method: "POST", body: form });
     expect(res.status).toBe(400);
     const json = await res.json();
     expect(json.error).toContain("format");
@@ -209,7 +203,7 @@ describe("POST /convert/outbound", () => {
   test("returns 400 on missing format", async () => {
     const form = new FormData();
     form.append("file", new File(["# Hello"], "test.md", { type: "text/markdown" }));
-    const res = await fetch(`${base}/convert/outbound`, { method: "POST", body: form });
+    const res = await apiFetch("/convert/outbound", { method: "POST", body: form });
     expect(res.status).toBe(400);
     const json = await res.json();
     expect(json.error).toContain("format");
@@ -220,7 +214,7 @@ describe("POST /convert/outbound", () => {
 
 describe("GET /config", () => {
   test("returns 200 with config object", async () => {
-    const res = await fetch(`${base}/config`);
+    const res = await apiFetch("/config");
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json).toHaveProperty("config");
@@ -233,7 +227,7 @@ describe("GET /config", () => {
 
 describe("GET /config/templates", () => {
   test("returns 200 with templates object", async () => {
-    const res = await fetch(`${base}/config/templates`);
+    const res = await apiFetch("/config/templates");
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json).toHaveProperty("templates");
@@ -254,7 +248,7 @@ describe("concurrency limiter", () => {
     };
 
     const requests = Array.from({ length: 6 }, () =>
-      fetch(`${base}/convert`, { method: "POST", body: form() })
+      apiFetch("/convert", { method: "POST", body: form() })
     );
 
     const responses = await Promise.all(requests);
@@ -274,7 +268,7 @@ describe("concurrency limiter", () => {
     // Single request should always succeed
     const form = new FormData();
     form.append("file", new File(["Simple test content."], "test.txt", { type: "text/plain" }));
-    const res = await fetch(`${base}/convert`, { method: "POST", body: form });
+    const res = await apiFetch("/convert", { method: "POST", body: form });
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.content).toBeDefined();
@@ -285,14 +279,14 @@ describe("concurrency limiter", () => {
 
 describe("unknown routes", () => {
   test("GET /unknown returns 404", async () => {
-    const res = await fetch(`${base}/unknown`);
+    const res = await apiFetch("/unknown");
     expect(res.status).toBe(404);
     const json = await res.json();
     expect(json.error).toBe("Not found");
   });
 
   test("POST /unknown returns 404", async () => {
-    const res = await fetch(`${base}/unknown`, { method: "POST" });
+    const res = await apiFetch("/unknown", { method: "POST" });
     expect(res.status).toBe(404);
   });
 });
