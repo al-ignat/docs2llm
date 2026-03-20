@@ -15,8 +15,8 @@ import { join, dirname } from "path";
 import { discoverFixtures } from "./discover";
 import { scoreFixture, computeOverall } from "./score";
 import { buildReport, formatCliTable, writeReport } from "./report";
-import { convertFile, convertFileWithSmartOcr } from "../src/core/convert";
 import { countWords, estimateTokens } from "../src/core/tokens";
+import { extract } from "../src/core/extraction";
 import type { DocumentClass, FixtureResult, EvalReport } from "./types";
 
 const ROOT = dirname(import.meta.dir);
@@ -115,13 +115,17 @@ async function main() {
     const start = performance.now();
     let content = "";
     let error: string | null = null;
+    let engine: string | undefined;
+    let warnings: string[] | undefined;
+    let extractionMs: number | undefined;
 
     try {
       const useSmartOcr = fixture.documentClass === "pdf-scanned" || fixture.meta.expect?.requiresOcr;
-      const result = useSmartOcr
-        ? await convertFileWithSmartOcr(fixture.filePath, "md")
-        : await convertFile(fixture.filePath, "md");
-      content = result.content;
+      const extractResult = await extract(fixture.filePath, { smartOcr: useSmartOcr });
+      content = extractResult.contentMarkdown;
+      engine = extractResult.engine;
+      warnings = extractResult.warnings.length ? extractResult.warnings : undefined;
+      extractionMs = extractResult.timings.totalMs;
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
       if (args.verbose) {
@@ -152,15 +156,19 @@ async function main() {
       error,
       tokenCount: tokens,
       wordCount: words,
+      engine,
+      warnings,
+      extractionMs,
     };
 
     results.push(result);
 
     if (args.verbose) {
       const status = error ? "\x1b[31mERR\x1b[0m" : overallScore >= 0.8 ? "\x1b[32mOK \x1b[0m" : "\x1b[33mLOW\x1b[0m";
+      const engineTag = engine ? ` [${engine}]` : "";
       console.log(
         `  ${status} ${fixture.documentClass}/${fixture.fileName} ` +
-          `score=${overallScore.toFixed(2)} ${durationMs}ms ${words}w`,
+          `score=${overallScore.toFixed(2)} ${durationMs}ms ${words}w${engineTag}`,
       );
     }
   }

@@ -60,3 +60,74 @@ export interface Extractor {
   extractFile(filePath: string, options?: ExtractOptions): Promise<ExtractionResult>;
   extractBytes(data: Uint8Array, mimeType: string, options?: ExtractOptions): Promise<ExtractionResult>;
 }
+
+// === Convenience top-level extraction function ===
+
+import { getExtractor } from "./adapters";
+import { guessMime } from "./mime";
+import { extname } from "path";
+import { isImageFile, isTesseractError, looksLikeScannedPdf } from "./convert";
+
+/**
+ * Extract content from a file using the best available adapter.
+ * Returns a normalized ExtractionResult with engine, timings, and warnings.
+ *
+ * With `smartOcr: true`, auto-enables OCR for images and retries
+ * scanned PDFs — matching `convertFileWithSmartOcr` behavior but
+ * returning the richer ExtractionResult contract.
+ */
+export async function extract(
+  filePath: string,
+  options?: ExtractOptions & { smartOcr?: boolean },
+): Promise<ExtractionResult> {
+  const ext = extname(filePath).toLowerCase();
+  const mime = (ext === ".html" || ext === ".htm") ? "text/html" : guessMime(filePath);
+  const extractor = getExtractor(mime);
+
+  if (!options?.smartOcr) {
+    return extractor.extractFile(filePath, options);
+  }
+
+  // Smart OCR: auto-detect images and scanned PDFs
+  const explicitOcr = options?.ocr?.enabled;
+  const isImg = isImageFile(filePath);
+
+  // Image auto-OCR
+  if (!explicitOcr && isImg) {
+    try {
+      const result = await extractor.extractFile(filePath, { ocr: { enabled: true, force: true } });
+      result.quality.usedOcr = true;
+      result.warnings.push("image_auto_ocr");
+      return result;
+    } catch (err) {
+      if (isTesseractError(err)) {
+        const result = await extractor.extractFile(filePath, options);
+        result.warnings.push("image_auto_ocr", "tesseract_missing_image");
+        return result;
+      }
+      throw err;
+    }
+  }
+
+  // Standard extraction
+  let result = await extractor.extractFile(filePath, options);
+
+  // Scanned PDF detection + auto-retry
+  if (!explicitOcr && looksLikeScannedPdf(filePath, result.contentMarkdown)) {
+    result.warnings.push("scanned_pdf_detected");
+    try {
+      const retried = await extractor.extractFile(filePath, { ocr: { enabled: true, force: true } });
+      retried.quality.usedOcr = true;
+      retried.warnings.push("scanned_pdf_detected");
+      return retried;
+    } catch (err) {
+      if (isTesseractError(err)) {
+        result.warnings.push("tesseract_missing_scanned");
+      } else {
+        throw err;
+      }
+    }
+  }
+
+  return result;
+}
