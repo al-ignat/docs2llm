@@ -51,8 +51,12 @@ export default async function Command() {
   const finderFront = await isFinderFrontmost();
 
   // Determine direction
+  // When clipboard has HTML but the text looks like Markdown, the user likely
+  // copied Markdown from a rich text app (chat, browser) and wants it formatted.
   let direction: "inbound" | "outbound" | "none";
-  if (clip.kind === "html" || clip.kind === "url") {
+  if (clip.kind === "html" && clip.text && looksLikeMarkdown(clip.text)) {
+    direction = "outbound";
+  } else if (clip.kind === "html" || clip.kind === "url") {
     direction = "inbound";
   } else if (clip.kind === "filepath") {
     direction =
@@ -108,6 +112,8 @@ async function pasteToApp(
   // direction === "outbound" — Markdown to rich HTML and paste
   let mdText: string;
   if (clip.kind === "text") {
+    mdText = clip.text;
+  } else if (clip.kind === "html" && clip.text) {
     mdText = clip.text;
   } else if (clip.kind === "filepath") {
     mdText = readFileSync(clip.path, "utf-8");

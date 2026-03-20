@@ -84,6 +84,49 @@ export async function checkPandoc(): Promise<boolean> {
   return pandocAvailable;
 }
 
+const PANDOC_TIMEOUT_MS = 60_000;
+
+/**
+ * Convert a Markdown string to HTML via Pandoc (stdin/stdout, no temp files).
+ * Used by `docs2llm push` to produce rich HTML for the clipboard.
+ */
+export async function pandocMarkdownToHtml(markdown: string): Promise<string> {
+  if (!(await checkPandoc())) {
+    throw new Error(
+      "Pandoc is required for Markdown → HTML conversion.\n" +
+      "Install:\n" +
+      "  macOS:   brew install pandoc\n" +
+      "  Ubuntu:  sudo apt install pandoc\n" +
+      "  Windows: choco install pandoc\n" +
+      "  Other:   https://pandoc.org/installing.html"
+    );
+  }
+
+  const proc = Bun.spawn([
+    "pandoc",
+    "-f", "markdown",
+    "-t", "html",
+    "--wrap=none",
+  ], { stdin: "pipe", stdout: "pipe", stderr: "pipe" });
+
+  proc.stdin.write(markdown);
+  proc.stdin.end();
+
+  const timeout = setTimeout(() => proc.kill(), PANDOC_TIMEOUT_MS);
+  const [stdout, stderr] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+  ]);
+  const code = await proc.exited;
+  clearTimeout(timeout);
+
+  if (code !== 0) {
+    throw new Error(`Pandoc Markdown→HTML failed (exit ${code}): ${stderr.trim()}`);
+  }
+
+  return stdout.trim();
+}
+
 export async function convertMarkdownTo(
   inputPath: string,
   format: OutboundFormat,
@@ -107,8 +150,6 @@ export async function convertMarkdownTo(
   const name = basename(inputPath, extname(inputPath));
   const dir = outputDir ?? dirname(inputPath);
   const outPath = join(dir, `${name}.${format}`);
-
-  const PANDOC_TIMEOUT_MS = 60_000; // 60 seconds
 
   const args = ["pandoc", inputPath, ...extraArgs ?? [], "-o", outPath];
   const proc = Bun.spawn(args, {

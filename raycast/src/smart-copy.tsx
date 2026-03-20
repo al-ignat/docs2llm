@@ -12,7 +12,6 @@ import {
   convertFile,
   convertUrl,
   convertToHtmlFromText,
-  exportToHtml,
   isInstalled,
 } from "./lib/docs2llm";
 import { detectSource } from "./lib/smart-detect";
@@ -49,7 +48,8 @@ export default async function Command() {
 
     if (source.direction === "outbound") {
       // .md file → rich HTML on clipboard
-      const result = await exportToHtml(source.path);
+      const mdText = readFileSync(source.path, "utf-8");
+      const result = await convertToHtmlFromText(mdText);
       if (result.error) {
         await showToast(failToast(result.error));
         return;
@@ -58,7 +58,6 @@ export default async function Command() {
         await showHUD("Conversion produced no output");
         return;
       }
-      const mdText = readFileSync(source.path, "utf-8");
       await Clipboard.copy({ html: result.html, text: mdText });
       await showHUD(`Copied ${fileName} as rich text`);
     } else {
@@ -231,7 +230,8 @@ export default async function Command() {
           style: Toast.Style.Animated,
           title: `Converting ${fileName}...`,
         });
-        const result = await exportToHtml(clip.path);
+        const mdText = readFileSync(clip.path, "utf-8");
+        const result = await convertToHtmlFromText(mdText);
         if (result.error) {
           await showToast(failToast(result.error));
           return;
@@ -240,10 +240,6 @@ export default async function Command() {
           await showHUD("Conversion produced no output");
           return;
         }
-        const mdText = (await import("node:fs")).readFileSync(
-          clip.path,
-          "utf-8",
-        );
         await Clipboard.copy({ html: result.html, text: mdText });
         await showHUD(`Copied ${fileName} as rich text`);
         return;

@@ -9,7 +9,6 @@ const mocks = vi.hoisted(() => ({
   convertFile: vi.fn(),
   convertUrl: vi.fn(),
   convertToHtmlFromText: vi.fn(),
-  exportToHtml: vi.fn(),
   detectSource: vi.fn(),
   readFileSync: vi.fn(() => "# Mock MD content"),
   writeFileSync: vi.fn(),
@@ -31,7 +30,6 @@ vi.mock("../lib/docs2llm", () => ({
   convertFile: mocks.convertFile,
   convertUrl: mocks.convertUrl,
   convertToHtmlFromText: mocks.convertToHtmlFromText,
-  exportToHtml: mocks.exportToHtml,
 }));
 
 vi.mock("../lib/smart-detect", () => ({
@@ -114,14 +112,15 @@ describe("Smart Copy", () => {
         path: "/docs/notes.md",
         direction: "outbound",
       });
-      mocks.exportToHtml.mockResolvedValue({ html: "<h1>Notes</h1>" });
+      mocks.readFileSync.mockReturnValue("# Notes");
+      mocks.convertToHtmlFromText.mockResolvedValue({ html: "<h1>Notes</h1>" });
 
       await Command();
 
-      expect(mocks.exportToHtml).toHaveBeenCalledWith("/docs/notes.md");
+      expect(mocks.convertToHtmlFromText).toHaveBeenCalledWith("# Notes");
       expect(mocks.clipboardCopy).toHaveBeenCalledWith({
         html: "<h1>Notes</h1>",
-        text: "# Mock MD content",
+        text: "# Notes",
       });
       expect(mocks.showHUD).toHaveBeenCalledWith(
         "Copied notes.md as rich text",
@@ -155,7 +154,8 @@ describe("Smart Copy", () => {
         path: "/docs/notes.md",
         direction: "outbound",
       });
-      mocks.exportToHtml.mockResolvedValue({
+      mocks.readFileSync.mockReturnValue("# Notes");
+      mocks.convertToHtmlFromText.mockResolvedValue({
         error: "pandoc: command not found",
       });
 
@@ -301,14 +301,15 @@ describe("Smart Copy", () => {
         clip: { kind: "filepath", path: "/docs/notes.md" },
         direction: "outbound",
       });
-      mocks.exportToHtml.mockResolvedValue({ html: "<h1>Notes</h1>" });
+      mocks.readFileSync.mockReturnValue("# Notes");
+      mocks.convertToHtmlFromText.mockResolvedValue({ html: "<h1>Notes</h1>" });
 
       await Command();
 
-      expect(mocks.exportToHtml).toHaveBeenCalledWith("/docs/notes.md");
+      expect(mocks.convertToHtmlFromText).toHaveBeenCalledWith("# Notes");
       expect(mocks.clipboardCopy).toHaveBeenCalledWith({
         html: "<h1>Notes</h1>",
-        text: "# Mock MD content",
+        text: "# Notes",
       });
     });
 

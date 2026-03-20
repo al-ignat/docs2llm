@@ -305,83 +305,61 @@ export async function exportMarkdown(
 }
 
 /**
- * Export a Markdown file to HTML, returning the HTML string.
- * Used by outbound-to-clipboard flows (Markdown to Rich Text, Copy as Rich Text).
+ * Export a Markdown file to an HTML file (standalone, with CSS).
+ * Used by Hyper+S save-to-file flows where a complete .html document is needed.
  */
 export async function exportToHtml(
   mdPath: string,
 ): Promise<{ html?: string; error?: string }> {
-  const tmpOut = join(tmpdir(), `docs2llm-html-${Date.now()}`);
-
-  const result = await run([
-    mdPath,
-    "-f",
-    "html",
-    "-o",
-    tmpOut,
-    "--yes",
-    "--json",
-  ]);
-
-  if (result.error) {
-    return { error: result.error };
-  }
-
-  // Find the output HTML file
-  let htmlPath: string | undefined;
-
-  try {
-    const parsed = JSON.parse(result.content);
-    if (parsed.output && existsSync(parsed.output)) {
-      htmlPath = parsed.output;
-    }
-  } catch {
-    // fall through
-  }
-
-  if (!htmlPath) {
-    const stem = basename(mdPath, ".md");
-    const candidate = join(tmpOut, `${stem}.html`);
-    if (existsSync(candidate)) {
-      htmlPath = candidate;
-    }
-  }
-
-  if (!htmlPath) {
-    return { error: "HTML export completed but output file was not found." };
-  }
-
-  try {
-    const html = readFileSync(htmlPath, "utf-8");
-    return { html };
-  } finally {
-    try {
-      unlinkSync(htmlPath);
-    } catch {
-      // ignore cleanup
-    }
-  }
+  const mdContent = readFileSync(mdPath, "utf-8");
+  return convertToHtmlFromText(mdContent);
 }
 
 /**
- * Convert Markdown text (from clipboard) to HTML string.
- * Writes a temp .md file, exports to HTML, cleans up.
+ * Resolve the Pandoc binary path, respecting user preferences and common locations.
  */
-export async function convertToHtmlFromText(
+function resolvePandoc(): string {
+  const prefs = getPrefs();
+  if (prefs.pandocPath?.trim() && existsSync(prefs.pandocPath.trim())) {
+    return prefs.pandocPath.trim();
+  }
+  for (const p of [
+    "/usr/local/bin/pandoc",
+    "/opt/homebrew/bin/pandoc",
+    join(HOME, ".local/bin/pandoc"),
+  ]) {
+    if (existsSync(p)) return p;
+  }
+  return "pandoc"; // fall back to PATH
+}
+
+/**
+ * Convert Markdown text to an HTML fragment via Pandoc (stdin/stdout, no temp files).
+ * Produces a lightweight fragment suitable for clipboard rich-text paste.
+ */
+export function convertToHtmlFromText(
   mdContent: string,
 ): Promise<{ html?: string; error?: string }> {
-  const tmpMd = join(tmpdir(), `docs2llm-md-${Date.now()}.md`);
+  const pandoc = resolvePandoc();
 
-  try {
-    writeFileSync(tmpMd, mdContent, "utf-8");
-    return await exportToHtml(tmpMd);
-  } finally {
-    try {
-      unlinkSync(tmpMd);
-    } catch {
-      // ignore cleanup
-    }
-  }
+  return new Promise((resolve) => {
+    const proc = execFile(
+      pandoc,
+      ["-f", "markdown", "-t", "html", "--wrap=none"],
+      { timeout: 15_000, maxBuffer: 10 * 1024 * 1024 },
+      (err, stdout, stderr) => {
+        if (err) {
+          const msg = stderr?.trim() || err.message;
+          resolve({ error: `Pandoc failed: ${msg}` });
+        } else {
+          const html = stdout.trim();
+          resolve({ html: html || undefined });
+        }
+      },
+    );
+    proc.stdin?.write(mdContent);
+    proc.stdin?.end();
+  });
 }
 
 /**
