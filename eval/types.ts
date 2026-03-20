@@ -72,6 +72,9 @@ export interface FixtureResult {
   error: string | null;
   tokenCount: number;
   wordCount: number;
+  engine?: string;
+  warnings?: string[];
+  extractionMs?: number;
 }
 
 /** Per-class summary in report */

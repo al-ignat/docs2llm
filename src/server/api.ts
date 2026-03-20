@@ -87,6 +87,7 @@ async function handleConvert(req: Request): Promise<Response> {
       words: stats.words,
       tokens: stats.tokens,
       fits: fits.map((f) => ({ name: f.name, limit: f.limit, fits: f.fits })),
+      engine: "kreuzberg",
     });
   } catch (err) {
     // Auto-triggered OCR (images): fall back to non-OCR and include warning
@@ -104,6 +105,7 @@ async function handleConvert(req: Request): Promise<Response> {
           words: stats.words,
           tokens: stats.tokens,
           fits: fits.map((f) => ({ name: f.name, limit: f.limit, fits: f.fits })),
+          engine: "kreuzberg",
           warning: "OCR unavailable (Tesseract not installed). Result may be incomplete for images.",
         });
       } catch (fallbackErr) {
@@ -150,14 +152,17 @@ async function handleConvertUrl(req: Request): Promise<Response> {
     let content: string;
     let mime = contentType.split(";")[0].trim();
 
+    let engine: string;
     if (mime === "text/html" || mime === "application/xhtml+xml") {
       const html = new TextDecoder().decode(bytes);
       content = await convertHtmlToMarkdown(html);
       mime = "text/html";
+      engine = "pandoc-html";
     } else {
       const result = await convertBytes(bytes, mime || "application/octet-stream");
       content = result.content;
       mime = result.mimeType;
+      engine = "kreuzberg";
     }
 
     const stats = getTokenStats(content);
@@ -169,6 +174,7 @@ async function handleConvertUrl(req: Request): Promise<Response> {
       words: stats.words,
       tokens: stats.tokens,
       fits: fits.map((f) => ({ name: f.name, limit: f.limit, fits: f.fits })),
+      engine,
     });
   } catch (err) {
     return Response.json({ error: safeErrorMessage(err) }, { status: 500 });

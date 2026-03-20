@@ -51,6 +51,7 @@ interface ConversionResult {
   tokens?: number;
   duration_ms: number;
   ocr_used?: boolean;
+  engine?: string;
   error?: string;
 }
 
@@ -191,7 +192,7 @@ export async function convertSingleFile(filePath: string, options: ConvertFileOp
       const stats = getTokenStats(result.content);
 
       if (jsonMode) {
-        const jsonResult: ConversionResult = { success: true, input: filePath, output: plan.outputPath, format: plan.format, tokens: stats.tokens, duration_ms: Math.round(performance.now() - t0), ocr_used: usedOcr || undefined };
+        const jsonResult: ConversionResult = { success: true, input: filePath, output: plan.outputPath, format: plan.format, tokens: stats.tokens, duration_ms: Math.round(performance.now() - t0), ocr_used: usedOcr || undefined, engine: result.engine };
         process.stdout.write(JSON.stringify(jsonResult));
       } else {
         cliResult(`✓ ${filePath} → ${plan.outputPath} (${formatTokenStats(stats)})`);
@@ -338,7 +339,7 @@ export async function convertFolder(dir: string, options: ConvertFolderOptions) 
           if (smartResult.qualityScore != null && smartResult.qualityScore < 0.5) {
             cliWarn(`  ⚠ Low quality extraction. Check the output.`);
           }
-          if (jsonMode) jsonResults.push({ success: true, input: file, output: plan.outputPath, format: plan.format, tokens: stats.tokens, duration_ms: Math.round(performance.now() - ft0), ocr_used: smartResult.usedOcr || undefined });
+          if (jsonMode) jsonResults.push({ success: true, input: file, output: plan.outputPath, format: plan.format, tokens: stats.tokens, duration_ms: Math.round(performance.now() - ft0), ocr_used: smartResult.usedOcr || undefined, engine: smartResult.engine });
         }
       })
     );

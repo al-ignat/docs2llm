@@ -3,7 +3,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { readdirSync } from "fs";
 import { join, extname } from "path";
-import { convertFile, convertHtmlToMarkdown, isTesseractError, TESSERACT_INSTALL_HINT, type OcrOptions, type OutputFormat } from "../core/convert";
+import { convertFile, convertHtmlToMarkdown, isTesseractError, TESSERACT_INSTALL_HINT, type OcrOptions, type OutputFormat, type ConversionResult } from "../core/convert";
 import { convertMarkdownTo, type OutboundFormat } from "../core/outbound";
 import { fetchAndConvert } from "../core/fetch";
 import { getTokenStats } from "../core/tokens";
@@ -38,9 +38,10 @@ export function createMcpServer(): McpServer {
         const metadata = [
           `Source: ${result.sourcePath}`,
           `MIME: ${result.mimeType}`,
+          result.engine ? `Engine: ${result.engine}` : null,
           `Words: ${stats.words}`,
           `Tokens: ~${stats.tokens}`,
-        ];
+        ].filter(Boolean) as string[];
         if (result.qualityScore != null) {
           metadata.push(`Quality: ${(result.qualityScore * 100).toFixed(0)}%`);
         }
