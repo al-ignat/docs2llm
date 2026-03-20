@@ -1,0 +1,14 @@
+description: "SaaS landing page with hero, pricing table, testimonials, footer links, cookie banner"
+expect:
+  minHeadings: 4
+  mustContain:
+    - "Metricflow"
+    - "Real-time Dashboards"
+    - "Anomaly Detection"
+    - "Semantic Layer"
+  mustNotContain:
+    - "Privacy Policy"
+    - "Terms of Service"
+    - "Cookie Policy"
+    - "All rights reserved"
+    - "Follow us on"

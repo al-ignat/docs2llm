@@ -1,0 +1,15 @@
+description: "Blog article with sidebar (related posts, ads, newsletter signup, tag cloud)"
+expect:
+  minHeadings: 6
+  mustContain:
+    - "WebAssembly"
+    - "3.2x speedup"
+    - "SHA-256"
+    - "Sarah Chen"
+  mustNotContain:
+    - "Privacy Policy"
+    - "Terms of Service"
+    - "Sign up for our newsletter"
+    - "Follow us on"
+    - "All rights reserved"
+    - "Advertisement"

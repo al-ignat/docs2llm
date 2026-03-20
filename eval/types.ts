@@ -53,7 +53,8 @@ export type ScoringDimension =
   | "headings"
   | "noise"
   | "ocr"
-  | "links";
+  | "links"
+  | "contentExtraction";
 
 /** Per-dimension result */
 export interface DimensionScore {

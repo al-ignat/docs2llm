@@ -258,6 +258,52 @@ export function scoreLinks(content: string, fixture: Fixture): DimensionScore {
   };
 }
 
+/**
+ * Score content extraction: penalize web boilerplate and nav link clusters.
+ * Only applicable to HTML document classes.
+ */
+export function scoreContentExtraction(content: string, fixture: Fixture): DimensionScore {
+  if (!HTML_CLASSES.has(fixture.documentClass)) {
+    return { score: 1, details: "N/A", applicable: false };
+  }
+
+  const checks: string[] = [];
+  let score = 1.0;
+
+  // Check for common boilerplate patterns that should be stripped
+  const boilerplate = [
+    "Privacy Policy", "Terms of Service", "Cookie", "Subscribe",
+    "Sign up for our newsletter", "All rights reserved",
+    "Follow us on", "Share this",
+  ];
+  const found = boilerplate.filter((b) => content.toLowerCase().includes(b.toLowerCase()));
+  if (found.length > 0) {
+    const penalty = Math.min(0.4, found.length * 0.1);
+    score -= penalty;
+    checks.push(`boilerplate: ${found.join(", ")}`);
+  }
+
+  // Check for navigation link clusters (3+ short links on consecutive lines)
+  const lines = content.split("\n");
+  let navClusterCount = 0;
+  let consecutiveShortLinks = 0;
+  for (const line of lines) {
+    const isShortLink = /^\[.{1,30}\]\(/.test(line.trim()) && line.trim().length < 80;
+    consecutiveShortLinks = isShortLink ? consecutiveShortLinks + 1 : 0;
+    if (consecutiveShortLinks >= 3) navClusterCount++;
+  }
+  if (navClusterCount > 0) {
+    score -= Math.min(0.3, navClusterCount * 0.1);
+    checks.push(`${navClusterCount} nav link cluster(s)`);
+  }
+
+  return {
+    score: Math.max(0, Math.min(1, score)),
+    details: checks.length > 0 ? checks.join("; ") : "clean",
+    applicable: true,
+  };
+}
+
 /** All scoring dimensions and their functions */
 const SCORERS: Record<ScoringDimension, (content: string, fixture: Fixture) => DimensionScore> = {
   structure: scoreStructure,
@@ -266,6 +312,7 @@ const SCORERS: Record<ScoringDimension, (content: string, fixture: Fixture) => D
   noise: scoreNoise,
   ocr: scoreOcr,
   links: scoreLinks,
+  contentExtraction: scoreContentExtraction,
 };
 
 /** Score a fixture across all dimensions */
