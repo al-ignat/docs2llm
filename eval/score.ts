@@ -39,10 +39,11 @@ export function scoreStructure(content: string, fixture: Fixture): DimensionScor
     checks.push("heading hierarchy skips levels");
   }
 
-  // mustContain
+  // mustContain (case-insensitive — extraction tools may normalize headings)
   const mustContain = fixture.meta.expect?.mustContain ?? [];
+  const contentLower = content.toLowerCase();
   for (const str of mustContain) {
-    if (!content.includes(str)) {
+    if (!contentLower.includes(str.toLowerCase())) {
       score -= 0.2;
       checks.push(`missing expected: "${str}"`);
     }

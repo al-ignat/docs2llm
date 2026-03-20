@@ -76,6 +76,7 @@ export interface FixtureResult {
   engine?: string;
   warnings?: string[];
   extractionMs?: number;
+  baselineScore?: number;
 }
 
 /** Per-class summary in report */

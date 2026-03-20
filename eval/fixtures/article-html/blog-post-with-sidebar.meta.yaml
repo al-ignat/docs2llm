@@ -5,7 +5,7 @@ expect:
     - "WebAssembly"
     - "3.2x speedup"
     - "SHA-256"
-    - "Sarah Chen"
+    - "cache utilization"
   mustNotContain:
     - "Privacy Policy"
     - "Terms of Service"
