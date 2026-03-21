@@ -22,57 +22,42 @@ jobs:
       - run: npm --prefix raycast ci
       - run: npm --prefix raycast test
 
-  build-binaries:
+  build-binary:
     needs: test
-    strategy:
-      matrix:
-        include:
-          - os: macos-14
-            arch: arm64
-            artifact: docs2llm-darwin-arm64
-          - os: macos-13
-            arch: x64
-            artifact: docs2llm-darwin-x64
-    runs-on: ${{ matrix.os }}
+    runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
       - uses: oven-sh/setup-bun@v2
-
       - run: bun install --frozen-lockfile
       - run: bun run build
 
-      # Verify the binary works
       - run: ./docs2llm --version
       - run: ./docs2llm --help
 
-      # Package binary + libpdfium into tarball
       - name: Package
         run: |
           mkdir -p dist
           cp docs2llm dist/
           cp libpdfium.dylib dist/
-          tar -czf ${{ matrix.artifact }}.tar.gz -C dist .
+          tar -czf docs2llm-darwin-arm64.tar.gz -C dist .
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.artifact }}
-          path: ${{ matrix.artifact }}.tar.gz
+          name: docs2llm-darwin-arm64
+          path: docs2llm-darwin-arm64.tar.gz
 
   release:
-    needs: build-binaries
+    needs: build-binary
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
 
-      # Generate checksums
       - name: Checksums
         run: |
-          cd artifacts
-          find . -name "*.tar.gz" -exec mv {} ../ \;
-          cd ..
-          sha256sum docs2llm-*.tar.gz > checksums.txt
+          mv artifacts/docs2llm-darwin-arm64/docs2llm-darwin-arm64.tar.gz .
+          sha256sum docs2llm-darwin-arm64.tar.gz > checksums.txt
           cat checksums.txt
 
       - name: Create Release
@@ -81,7 +66,6 @@ jobs:
           generate_release_notes: true
           files: |
             docs2llm-darwin-arm64.tar.gz
-            docs2llm-darwin-x64.tar.gz
             checksums.txt
 
   publish-npm:
