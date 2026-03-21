@@ -9,14 +9,18 @@ You have a PDF report, a PowerPoint deck, a budget spreadsheet, a web article. Y
 ## Install
 
 ```bash
-# Use directly — no install needed
-bunx docs2llm
+# Homebrew (macOS — no Bun required)
+brew install al-ignat/tap/docs2llm
 
-# Or install globally
-bun install -g docs2llm
+# Or download the binary directly from GitHub Releases
+# https://github.com/al-ignat/docs2llm/releases
+
+# Or via Bun (requires Bun runtime)
+bunx docs2llm                # no install needed
+bun install -g docs2llm      # global install
 ```
 
-Requires [Bun](https://bun.sh). Outbound conversion (Markdown → DOCX/PPTX/HTML) also needs [Pandoc](https://pandoc.org) (`brew install pandoc`).
+Outbound conversion (Markdown → DOCX/PPTX/HTML) also needs [Pandoc](https://pandoc.org) (`brew install pandoc`).
 
 ## Quick Examples
 
