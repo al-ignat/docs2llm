@@ -1,110 +1,59 @@
 # docs2llm Roadmap
 
-## Next Up: Distribution
+## Quality & Extraction
 
-Standalone binary is built. Next step is getting it into users' hands.
-
-- [ ] Homebrew formula or direct download
-- [ ] Test on clean machine (no Bun installed)
+- [ ] Improve scanned PDF detection for image-only PDFs (Kreuzberg reports high quality on image refs)
+- [ ] Improve email HTML noise filtering (unsubscribe links, footers)
+- [ ] Add more eval fixtures for scanned PDFs and mixed text/image docs
 
 ## Raycast Extension
 
 - [ ] Config management + template management (view/create/edit templates)
 - [ ] Batch/folder conversion
-- [ ] Watch integration from Raycast
-- [ ] Chunking and token budget controls
 - [ ] History / recent conversions
-- [ ] Drag-and-drop file target (Raycast `file` mode)
-- [ ] Quiet mode preference
 
-## macOS App
+## Web UI
 
-Native desktop app wrapping the web UI. Thin Swift shell using `WKWebView` — no Electron, no bundled Chromium. Starts the Bun server in the background, opens the UI in a native macOS window.
-
-- [ ] Swift wrapper with WKWebView pointing at localhost
-- [ ] Bundle the compiled CLI binary inside the .app
-- [ ] App icon, proper Info.plist
-- [ ] Menu bar integration (convert from Finder right-click?)
-- [ ] DMG or Homebrew cask distribution
-
-## Web UI Gaps
-
-- [ ] Update README web UI section (outbound, clipboard, settings, templates)
 - [ ] Show conversion progress for large files
-- [ ] Drag-and-drop reference doc directly in outbound panel (skip settings)
+- [ ] Drag-and-drop reference doc directly in outbound panel
+
+## Future
+
+- [ ] Linux binary distribution (GitHub Releases)
+- [ ] macOS native app (Swift/WKWebView wrapper)
+- [ ] Expanded MCP tool surface
 
 ---
 
 ## Changelog
 
-### 2026-02-24 — Simplify Raycast Commands
+### v0.1.0 — Initial Public Release
 
-Consolidated 11 commands into 6 (3 view + 3 smart). Unified inbound/outbound in each view command.
+Quality foundation, extraction pipeline, and distribution infrastructure.
 
-- Convert File: bidirectional — auto-detects inbound/outbound from file extension
-- Convert Clipboard: view mode with URL field, direction toggle, template support
-- Quick Convert: view mode with pre-filled form from Finder selection
-- Smart Copy/Paste/Save: wired OCR globally, per-command format preferences
-- New global prefs: `pandocPath`, `defaultTemplate`, required `outputDir`
-- Per-command prefs: `defaultFormat`, `defaultExportFormat` on all 6 commands
-- ResultView: added "Open in Editor" action
-- Deleted: convert-url, export-markdown, markdown-to-rich-text, copy-as-rich-text, save-clipboard
+**Extraction Quality**
+- Evaluation harness with 24 fixtures across 8 document classes (overall score: 0.95)
+- Quality-aware PDF content classifier (replaces simple character-count heuristic)
+- Kreuzberg 4.5.1 with MIME-aware config tuning, table injection, PPTX post-processing
+- Defuddle integration for web/article HTML extraction
+- Swapped HTML pipeline from Pandoc to Kreuzberg (eliminates escaping artifacts)
 
-### 2026-02-24 — Smart Raycast Commands
+**Surfaces**
+- Unified JSON envelope (`--stdout --json`) for Raycast-CLI integration
+- Engine/quality metadata visible in Raycast ResultView
+- Engine name shown in CLI normal mode output
+- Tesseract error detection in Raycast
 
-Three context-aware commands that auto-detect the source (Finder file, text selection, clipboard) and conversion direction (inbound/outbound):
+**Distribution**
+- GitHub Releases with macOS binaries (arm64 + x64)
+- Homebrew formula
+- npm package
 
-- Smart Copy, Smart Paste, Smart Save with `smart-detect.ts` cascade (PR #42)
-- Fix: expanded PATH in Raycast child process so Pandoc is reachable
-- Fix: CLI JSON key mismatch (`output` vs `outputPath`) in outbound response parsing
-- Fix: narrowed Pandoc error detection to avoid false positives
-- 81 vitest tests for smart commands, `bunfig.toml` to isolate from `bun test`
-
-### 2026-02-23 — Raycast Extension
-
-Full Raycast extension for docs2llm (PRs #38, #40, #41):
-
-- Convert File, Convert Clipboard, Copy as Rich Text, Markdown to Rich Text
-- Save Clipboard to File, Export Markdown (docx/pptx/html)
-- Full inbound/outbound conversion matrix
-- Token metadata, shared ResultView, preference-driven output directory
-
-### 2026-02-23 — Standalone Binary
-
-Ship the CLI as a single native executable via `bun build --compile`. No Bun, Node, or npm required at runtime. Only external dependency: Pandoc (outbound conversion only).
-
-- Standalone binary via `bun build --compile` (PR #37)
-- Graceful OCR fallback when Tesseract is not installed
-
-### 2026-02-23 — CLI Extraction
-
-- Extracted conversion logic from `cli.ts` into `run.ts` (PR #36)
-
-### 2026-02-23 — CLI Wizard Redesign
-
-Full interactive mode rewrite using @clack/prompts v1.0 (PRs #26-35):
-
-- Autocomplete file picker, progress bars, step trackers, `p.path()` auto-suggest
-- `p.box()` displays, config diff preview, improved error messages
-- `--yes`, `--json`, `--quiet` flags, non-TTY detection
-
-### 2026-02-22 — Codebase Restructure
-
-- Restructured into `src/` with `core/`, `commands/`, `server/`, `shared/` layers (PR #25)
-- Added test suite for 5 core modules (91 tests)
-- Web UI extraction — `api.ts` split into `api.ts` + `ui.ts`
-
-### 2026-02-20 — Security Hardening
-
-Full security audit (v1 + v2) and remediation. All findings addressed. See [docs/SECURITY_AUDIT_V2.md](docs/SECURITY_AUDIT_V2.md) for details.
-
-- SSRF protection via `url-safe.ts` (URL validation, private IP blocking, DNS pre-resolution)
-- Pandoc flag allowlist (replaced blocklist)
-- Server bound to localhost only
-- Fetch timeouts, upload size limits, stdin size limits
-- Path traversal protection, filename sanitization, temp file collision fix
-- DOM-safe rendering (textContent instead of innerHTML)
-- Config traversal boundary, template deletion path validation
-- Input validation (chunk-size, JSON.parse, ZIP MIME detection)
-- Watch mode fixes (recursive, subdirectory structure, race conditions)
-- Format flag fixes for stdin and URL conversion
+**Earlier Work**
+- Standalone binary via `bun build --compile`
+- Raycast extension (6 commands with smart auto-detection)
+- Web UI with drag-and-drop, URL conversion, clipboard
+- MCP server for Claude Desktop / Cursor
+- Interactive CLI wizard with @clack/prompts
+- Security hardening (SSRF protection, Pandoc allowlist, input validation)
+- Config system with templates and per-format Pandoc args
