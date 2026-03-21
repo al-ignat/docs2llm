@@ -1,37 +1,12 @@
 # docs2llm
 
-Convert any document into LLM-ready text. PDF, DOCX, PPTX, XLSX, web pages, images, emails, and 75+ other formats — straight to clean Markdown you can paste into ChatGPT, Claude, or Gemini. Also converts Markdown back into DOCX, PPTX, or HTML.
+Turn documents into LLM-ready Markdown. Local-first, one command, no cloud APIs.
 
-One command. No config. Scanned PDFs handled automatically with OCR.
+You have a PDF report, a PowerPoint deck, a budget spreadsheet, a web article. You need clean text for Claude, ChatGPT, or Gemini. docs2llm converts 75+ formats into structured Markdown with headings, tables, and lists preserved — and counts tokens so you know what fits. It also converts Markdown *back* to Word, PowerPoint, or HTML when you need to share with people who don't live in a terminal.
 
-Powered by [Kreuzberg](https://kreuzberg.dev) for extraction and [Pandoc](https://pandoc.org) for outbound conversion.
-
-## Quick Start
-
-### CLI
-
-```bash
-# Convert any document — outputs Markdown by default
-bunx docs2llm report.pdf
-
-# Interactive wizard — discovers files for you
-bunx docs2llm
-
-# Convert a web page
-bunx docs2llm https://example.com/article
-```
-
-### Web UI
-
-```bash
-bunx docs2llm open
-```
-
-Opens a local drag-and-drop interface at `localhost:3000`. Drop any file, paste a URL, or Cmd+V from clipboard — converts to Markdown instantly.
+![CLI demo](docs/assets/cli-demo.png)
 
 ## Install
-
-Requires [Bun](https://bun.sh):
 
 ```bash
 # Use directly — no install needed
@@ -41,112 +16,38 @@ bunx docs2llm
 bun install -g docs2llm
 ```
 
-Outbound conversion (Markdown → DOCX/PPTX/HTML) also requires [Pandoc](https://pandoc.org):
+Requires [Bun](https://bun.sh). Outbound conversion (Markdown → DOCX/PPTX/HTML) also needs [Pandoc](https://pandoc.org) (`brew install pandoc`).
+
+## Quick Examples
 
 ```bash
-brew install pandoc        # macOS
-sudo apt install pandoc    # Linux
-choco install pandoc       # Windows
+docs2llm report.pdf                  # PDF → Markdown
+docs2llm ./docs/                     # convert an entire folder
+docs2llm https://example.com/article # web page → Markdown
+docs2llm paste --copy                # clipboard → clean Markdown → clipboard
+docs2llm notes.md -f docx            # Markdown → Word document
+docs2llm                             # interactive wizard (no args)
 ```
 
-## What It Does
+Every conversion shows token count and engine used:
 
 ```
-                   ┌──────────────────────┐
-  .pdf .docx       │                      │    Markdown
-  .pptx .xlsx ───► │      docs2llm        │ ──► + token count
-  .html .eml       │                      │    + LLM fit check
-  .png .jpg   ───► │  Kreuzberg (inbound) │ ──► clipboard / file / stdout
-  URLs        ───► │  Pandoc (outbound)   │
-                   │                      │    .docx .pptx .html
-  .md         ───► │                      │ ──► via Pandoc
-                   └──────────────────────┘
+✓ report.pdf → report.md (2,340 words, ~3,100 tokens, kreuzberg)
 ```
 
-Every conversion shows token count and LLM fit:
+## Use It Where You Work
 
-```
-✓ report.pdf → report.md (2,340 words, ~3,100 tokens)
-Fits in: GPT-4o mini ✓  GPT-4o ✓  Claude ✓  Gemini ✓
-```
+### CLI
 
-## Usage
+One command in the terminal. Converts files, folders, URLs, and stdin. Run with no arguments for an interactive wizard that scans your current directory and recent downloads.
 
-### Convert Files
+### Raycast
 
-```bash
-docs2llm report.pdf                    # → report.md
-docs2llm report.pdf -f json            # → report.json (with metadata + token count)
-docs2llm report.pdf -f yaml            # → report.yaml
-docs2llm report.pdf -o ./output/       # save to specific directory
-docs2llm ./docs/                       # convert all files in a folder (parallel)
-docs2llm report.pdf -y                 # overwrite without prompting
-```
+Six commands with smart auto-detection. Select a file in Finder, hit a keyboard shortcut, get Markdown on your clipboard. Three view commands (Convert File, Convert Clipboard, Quick Convert) and three no-view smart commands (Smart Copy, Smart Paste, Smart Save) that auto-detect your source and conversion direction.
 
-### Convert Web Pages
+<!-- TODO: GIF — Raycast Smart Copy demo (record manually in Raycast) -->
 
-```bash
-docs2llm https://example.com/article        # → article.md
-docs2llm https://example.com --stdout        # print to terminal
-docs2llm https://example.com -o ./research/  # save to directory
-```
-
-### OCR for Scanned Documents
-
-Scanned PDFs and images are automatically detected. In interactive mode, you get a prompt:
-
-```
-This looks like a scanned document. Extract text with OCR? [Yes / No]
-```
-
-In CLI mode, scanned PDFs are retried automatically with OCR. You can also force it:
-
-```bash
-docs2llm scan.pdf --ocr               # enable OCR
-docs2llm scan.pdf --ocr=force         # force OCR even when text exists
-docs2llm scan.pdf --ocr-lang deu      # OCR with German language model
-```
-
-### Outbound: Markdown → Documents
-
-Convert Markdown files back into rich documents (requires Pandoc):
-
-```bash
-docs2llm notes.md -f docx             # → Word document
-docs2llm notes.md -f pptx             # → PowerPoint (slides split on headings)
-docs2llm notes.md -f html             # → standalone HTML page
-docs2llm notes.md -t report           # use a named template from config
-docs2llm notes.md -f docx -- --toc --reference-doc=template.docx
-```
-
-### Clipboard
-
-Copy content from a web page or document, then:
-
-```bash
-docs2llm paste                         # interactive: clipboard / stdout / file
-docs2llm paste --copy                  # convert and copy clean markdown back
-docs2llm paste --stdout                # pipe-friendly output
-docs2llm paste -o snippet.md           # save to file
-```
-
-Works on macOS, Linux (requires `xclip` or `xsel`), and Windows.
-
-### Interactive Mode
-
-Running `docs2llm` with no arguments launches a guided wizard:
-
-1. **File picker** — scans your current directory and `~/Downloads` (last 24h), sorted by recency. Also offers URL input, batch conversion, and manual path entry.
-
-2. **Format picker** — for Markdown files, choose output format (Word, PowerPoint, HTML) or a named template.
-
-3. **Output directory** — choose where to save (current dir, same as input, config default, or custom path).
-
-4. **Conversion** — with progress spinner, token count, and LLM fit indicator.
-
-5. **Post-conversion** — copy to clipboard, open file, or reveal in Finder.
-
-6. **Large document handling** — if output exceeds an LLM's context window, choose to truncate, split into parts, or keep as-is.
+See [raycast/README.md](raycast/README.md) for setup.
 
 ### Web UI
 
@@ -154,205 +55,92 @@ Running `docs2llm` with no arguments launches a guided wizard:
 docs2llm open
 ```
 
-Opens in your browser (port 3000, or next available). Features:
+Drag-and-drop interface at localhost. Drop any file, paste a URL, or Cmd+V from clipboard. Supports inbound and outbound conversion, template selection, and dark theme.
 
-- **Inbound**: drag and drop any file, paste a URL, or Cmd+V from clipboard — converts to Markdown
-- **Outbound**: drop a `.md` file to convert it to Word, PowerPoint, or HTML (with template support)
-- **Settings**: gear icon opens a config panel — set default format, Pandoc args, manage templates
-- Copy to clipboard, download `.md`, token count and LLM fit indicator
-- Dark theme
+![Web UI](docs/assets/web-ui.png)
 
-## Output Formats
-
-**Markdown** (default) — clean text with tables, headings, and lists:
-
-```markdown
-# Test Report
-
-This is paragraph one.
-
-| Name  | Value |
-| ----- | ----- |
-| Alpha | 100   |
-```
-
-**JSON** — structured output with metadata, token stats, and quality score:
-
-```json
-{
-  "source": "report.docx",
-  "mimeType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-  "words": 1250,
-  "tokens": 1663,
-  "metadata": { "page_count": 1, "format_type": "docx" },
-  "content": "# Test Report\n\n...",
-  "qualityScore": 0.95
-}
-```
-
-**YAML** — same structure as JSON, in YAML format.
-
-## Advanced Usage
-
-### Piping (stdin/stdout)
-
-For shell scripts and automation:
-
-```bash
-cat report.pdf | docs2llm --stdin --stdout           # PDF → markdown on stdout
-cat report.pdf | docs2llm --stdin --stdout --chunks   # PDF → JSON chunks on stdout
-curl -s https://example.com | docs2llm --stdin --stdout  # HTML → markdown
-```
-
-### Watch Mode
-
-Auto-convert files as they appear in a folder:
-
-```bash
-docs2llm watch ~/inbox --to ~/converted
-# Watching ~/inbox → ~/converted
-# Drop files into the folder to auto-convert. Press Ctrl+C to stop.
-#
-# ✓ report.pdf → report.md (2,340 words, ~3,100 tokens)
-# ✓ slides.pptx → slides.md (890 words, ~1,183 tokens)
-```
-
-### Chunking (for RAG Pipelines)
-
-Split output into chunks sized for embedding models or retrieval:
-
-```bash
-docs2llm report.pdf --chunks                    # default: 4000 tokens per chunk
-docs2llm report.pdf --chunks --chunk-size=2000  # custom chunk size
-docs2llm report.pdf --chunks --stdout           # JSON array to stdout
-```
-
-Output format:
-
-```json
-[
-  { "index": 0, "content": "...", "tokens": 3850 },
-  { "index": 1, "content": "...", "tokens": 3920 },
-  { "index": 2, "content": "...", "tokens": 2100 }
-]
-```
-
-### MCP Server (Claude Desktop / Cursor)
-
-Expose docs2llm as an MCP tool server so LLMs can convert documents directly:
+### MCP Server
 
 ```bash
 docs2llm serve
 ```
 
-This starts a stdio-based [Model Context Protocol](https://modelcontextprotocol.io) server with three tools: `convert_file`, `convert_url`, and `list_formats`.
-
-Add to your Claude Desktop config (`claude_desktop_config.json`):
+Exposes docs2llm as a tool server for [Claude Desktop](https://claude.ai/download), [Cursor](https://cursor.com), or any MCP client. Four tools: `convert_file`, `convert_url`, `convert_to_document`, `list_formats`.
 
 ```json
 {
   "mcpServers": {
-    "docs2llm": {
-      "command": "bunx",
-      "args": ["docs2llm", "serve"]
-    }
+    "docs2llm": { "command": "bunx", "args": ["docs2llm", "serve"] }
   }
 }
 ```
 
-### Config & Templates
+## Best For
 
-Create a config file to set defaults, per-format Pandoc args, and named templates:
+- Converting work documents (reports, decks, specs, budgets) into prompt-ready text
+- Extracting clean article content from web pages and URLs
+- Clipboard workflows: copy from browser or email, paste as Markdown
+- Batch conversion of document folders
+- Exporting Markdown back to Word or PowerPoint for non-technical stakeholders
+- Token budgeting for LLM context windows
+- Local and private workflows — no data leaves your machine
+
+## Not Best For
+
+- Complex PDF tables with merged cells (some structure may be lost)
+- Scanned PDFs without [Tesseract](https://github.com/tesseract-ocr/tesseract) installed
+- Email HTML with heavy templating (footers and unsubscribe links may leak through)
+- Replacing dedicated PDF parsing pipelines for production data extraction
+
+## Conversion Quality
+
+Quality is measured, not guessed. An evaluation harness runs against real-world documents across 8 format classes:
+
+| Format | Score |
+|--------|-------|
+| DOCX / XLSX | 1.0 |
+| Article HTML | 0.99 |
+| Webpage HTML | 0.96 |
+| PPTX | 0.91 |
+| PDF (digital) | 0.86 |
+| Email HTML | 0.84 |
+
+Scores are tracked across releases. See [eval/](eval/) for methodology and fixtures.
+
+## Supported Formats
+
+**Documents**: PDF, DOCX, PPTX, XLSX, ODT, ODP, ODS, RTF | **Web**: URLs, HTML, XML | **Email**: EML, MSG | **Images** (OCR): PNG, JPG, TIFF, BMP, GIF, WEBP | **eBooks**: EPUB, MOBI | **Data**: CSV, TSV, TXT | **Code**: most source files
+
+Run `docs2llm formats` for the full list. Outbound: Markdown → DOCX, PPTX, HTML.
+
+## Configuration
 
 ```bash
-docs2llm init              # creates .docs2llm.yaml in current directory
-docs2llm init --global     # creates ~/.config/docs2llm/config.yaml
-docs2llm config            # view and manage config interactively
+docs2llm init              # create config in current directory
+docs2llm config            # manage interactively
 ```
 
-Local config overrides global (field-by-field merge). Example `.docs2llm.yaml`:
+Example `.docs2llm.yaml`:
 
 ```yaml
 defaults:
-  format: docx          # default format for .md smart default
-  outputDir: ./out      # null = same dir as input
-  force: false          # skip overwrite prompts
-
-pandoc:                 # per-format pandoc args
-  html:
-    - --toc
-  docx:
-    - --reference-doc=./templates/report.docx
+  format: docx
+  outputDir: ./out
 
 templates:
   report:
     format: docx
-    pandocArgs:
-      - --reference-doc=./templates/report.docx
-      - --toc
-    description: Company report with TOC
-  slides:
-    format: pptx
-    pandocArgs:
-      - --slide-level=2
-    description: Presentation slides
+    pandocArgs: [--toc, --reference-doc=./templates/report.docx]
 ```
 
-Templates appear in the interactive mode format picker and can be used with `-t`:
+See [docs/REFERENCE.md](docs/REFERENCE.md) for full config schema and template options.
 
-```bash
-docs2llm notes.md -t report          # uses template's format + pandoc args
-docs2llm notes.md -t report -f html  # explicit -f overrides template format
-```
+## Further Reading
 
-### Raycast Extension
-
-A [Raycast](https://raycast.com) extension is available in the `raycast/` directory with smart commands that auto-detect context (Finder selection, text, clipboard) and convert with keyboard shortcuts. See `raycast/README.md` for setup and full command list.
-
-## Supported Formats
-
-Run `docs2llm formats` for the full list. Summary:
-
-| Category | Formats |
-|----------|---------|
-| **Documents** | .docx .doc .pptx .ppt .xlsx .xls .odt .odp .ods .rtf .pdf |
-| **Text & Data** | .txt .csv .tsv .html .xml .md |
-| **Email** | .eml .msg |
-| **eBooks** | .epub .mobi |
-| **Images** (via OCR) | .png .jpg .jpeg .tiff .bmp .gif .webp |
-| **Code** | Most source code files |
-| **Web** | Any URL (HTML pages, remote documents) |
-
-## All Options
-
-```
-docs2llm                              Interactive mode
-docs2llm <file>                       Convert a file to .md
-docs2llm <folder>                     Convert all files in folder (parallel)
-docs2llm <url>                        Fetch and convert a web page
-docs2llm paste                        Clipboard → Markdown
-docs2llm watch <dir> --to <dir>       Auto-convert new files
-docs2llm open                         Launch web UI at localhost:3000
-docs2llm serve                        Start MCP server (stdio)
-docs2llm formats                      List supported formats
-docs2llm init [--global]              Create config file
-docs2llm config                       View and manage config
-
-Options:
-  -f, --format <fmt>        md, json, yaml (inbound) | docx, pptx, html (outbound)
-  -t, --template <name>     Use a named template from config
-  -o, --output <path>       Output directory
-  -y, --force               Overwrite without prompting
-  --ocr                     Enable OCR for scanned documents
-  --ocr=force               Force OCR even if text is available
-  --ocr-lang <code>         OCR language (e.g., deu, fra, jpn)
-  --stdin                   Read input from stdin
-  --stdout                  Write output to stdout
-  --chunks                  Split output into JSON chunks
-  --chunk-size <tokens>     Tokens per chunk (default: 4000)
-  --                        Pass remaining args to Pandoc
-  -h, --help                Show help
-```
+- [Full CLI Reference](docs/REFERENCE.md) — all commands, options, piping, watch mode, chunking, MCP setup
+- [Raycast Extension](raycast/README.md) — setup, commands, preferences
+- [Evaluation Harness](eval/README.md) — quality methodology and fixtures
+- [Roadmap](ROADMAP.md) — what's next
 
 ## License
 
