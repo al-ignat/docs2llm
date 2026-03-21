@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { getExtractor, KreuzbergExtractor, PandocHtmlExtractor } from "../src/core/adapters";
-import { buildExtractionConfig, injectTables, prependTitle, cleanPptxContent } from "../src/core/adapters/kreuzberg";
+import { buildExtractionConfig, injectTables, prependTitle, cleanPptxContent, promoteSlideHeadings } from "../src/core/adapters/kreuzberg";
 import { cleanEmailHtml, cleanPandocMarkdown, convertHtmlToMarkdown, looksLikeEmailHtml, isFragmentHtml } from "../src/core/adapters/pandoc-html";
 import type { ExtractionResult, Extractor } from "../src/core/extraction";
 
@@ -467,5 +467,34 @@ describe("cleanPptxContent", () => {
     const content = "  \n\n  <p>Hello</p>  \n\n  ";
     const result = cleanPptxContent(content);
     expect(result).toBe("Hello");
+  });
+});
+
+// --- promoteSlideHeadings ---
+
+describe("promoteSlideHeadings", () => {
+  test("promotes first bullet after --- to heading", () => {
+    const content = "---\n- Slide Title\n- bullet content";
+    const result = promoteSlideHeadings(content);
+    expect(result).toBe("---\n## Slide Title\n- bullet content");
+  });
+
+  test("promotes multiple slide titles", () => {
+    const content = "---\n- First Slide\n- content\n---\n- Second Slide\n- more content";
+    const result = promoteSlideHeadings(content);
+    expect(result).toContain("## First Slide");
+    expect(result).toContain("## Second Slide");
+  });
+
+  test("is a no-op without slide markers", () => {
+    const content = "- Just a bullet\n- Another bullet";
+    expect(promoteSlideHeadings(content)).toBe(content);
+  });
+
+  test("handles slide with only a title", () => {
+    const content = "---\n- Title Only\n---\n- Next Slide";
+    const result = promoteSlideHeadings(content);
+    expect(result).toContain("## Title Only");
+    expect(result).toContain("## Next Slide");
   });
 });

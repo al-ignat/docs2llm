@@ -141,6 +141,18 @@ export function cleanPptxContent(content: string): string {
     .trim();
 }
 
+/**
+ * Promote the first bullet after each slide marker (---) to a ## heading.
+ * PPTX slide titles come through as `- Title` — this makes them headings.
+ */
+export function promoteSlideHeadings(content: string): string {
+  if (!content.includes("---")) return content;
+  return content.replace(
+    /^---\n- (.+)$/gm,
+    (_, title) => `---\n## ${title}`,
+  );
+}
+
 function isPptxMime(mimeType: string): boolean {
   return PPTX_MIMES.includes(mimeType);
 }
@@ -166,10 +178,13 @@ function toExtractionResult(
       content = prependTitle(content, title);
     }
 
-    // PPTX: strip residual HTML tags
-    if (isPptxMime(native.mimeType) && /<[^>]+>/.test(content)) {
-      content = cleanPptxContent(content);
-      warnings.push("pptx_html_cleaned");
+    // PPTX: strip residual HTML tags + promote slide titles
+    if (isPptxMime(native.mimeType)) {
+      if (/<[^>]+>/.test(content)) {
+        content = cleanPptxContent(content);
+        warnings.push("pptx_html_cleaned");
+      }
+      content = promoteSlideHeadings(content);
     }
   }
 
