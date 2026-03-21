@@ -2,7 +2,7 @@ import * as p from "@clack/prompts";
 import { resolve, extname, dirname, join, basename } from "path";
 import { statSync, existsSync, mkdirSync, readdirSync } from "fs";
 import { homedir } from "os";
-import { convertFile, convertFileWithSmartOcr, looksLikeScannedPdf, isImageFile, isTesseractError, TESSERACT_INSTALL_HINT, type OutputFormat } from "../core/convert";
+import { convertFile, convertFileWithSmartOcr, classifyPdfContent, isImageFile, isTesseractError, TESSERACT_INSTALL_HINT, type OutputFormat } from "../core/convert";
 import { writeOutput } from "../core/output";
 import { buildPlan, ValidationError } from "../core/validate";
 import { scanForFiles, formatHint, timeAgo, INBOUND_ONLY_EXTS, type FileInfo } from "../core/scan";
@@ -413,11 +413,15 @@ async function convert(
         result = await convertFile(filePath, plan.format);
       }
 
-      // Auto-detect scanned PDFs and offer OCR
-      if (!isImg && looksLikeScannedPdf(filePath, result.content)) {
-        s.stop("Scanned document detected");
+      // Auto-detect scanned/mixed PDFs and offer OCR
+      const pdfClass = classifyPdfContent(filePath, result.content, result.qualityScore ?? null, result.metadata ?? {});
+      if (!isImg && pdfClass.shouldRetryWithOcr) {
+        const label = pdfClass.contentClass === "mixed"
+          ? "Mixed text/image document detected"
+          : "Scanned document detected";
+        s.stop(label);
         const useOcr = await p.confirm({
-          message: "This looks like a scanned document. Extract text with OCR?",
+          message: `This looks like a ${pdfClass.contentClass === "mixed" ? "mixed text/image" : "scanned"} document. Extract text with OCR?`,
           initialValue: true,
         });
         if (!p.isCancel(useOcr) && useOcr) {

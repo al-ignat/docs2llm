@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   formatOutput,
   looksLikeScannedPdf,
+  classifyPdfContent,
   isImageFile,
   isImageMime,
   isTesseractError,
@@ -11,27 +12,85 @@ import {
   convertHtmlToMarkdown,
 } from "../src/core/convert";
 
-describe("looksLikeScannedPdf", () => {
-  test("returns true for a .pdf with empty content", () => {
-    expect(looksLikeScannedPdf("/tmp/scan.pdf", "")).toBe(true);
+describe("classifyPdfContent", () => {
+  test("classifies empty PDF as scanned", () => {
+    const result = classifyPdfContent("/tmp/scan.pdf", "", null, {});
+    expect(result.contentClass).toBe("scanned");
+    expect(result.shouldRetryWithOcr).toBe(true);
   });
 
-  test("returns true for a .pdf with very short content", () => {
-    expect(looksLikeScannedPdf("/tmp/scan.pdf", "  page 1  ")).toBe(true);
+  test("classifies near-empty PDF as scanned", () => {
+    const result = classifyPdfContent("/tmp/scan.pdf", "  page 1  ", null, {});
+    expect(result.contentClass).toBe("scanned");
+    expect(result.shouldRetryWithOcr).toBe(true);
   });
 
-  test("returns false for a .pdf with substantial content", () => {
-    const content = "A".repeat(100);
-    expect(looksLikeScannedPdf("/tmp/doc.pdf", content)).toBe(false);
+  test("classifies substantial content as digital", () => {
+    const content = "A".repeat(500);
+    const result = classifyPdfContent("/tmp/doc.pdf", content, 0.85, { page_count: 2 });
+    expect(result.contentClass).toBe("digital");
+    expect(result.shouldRetryWithOcr).toBe(false);
   });
 
-  test("returns false for non-pdf files regardless of content", () => {
-    expect(looksLikeScannedPdf("/tmp/doc.txt", "")).toBe(false);
-    expect(looksLikeScannedPdf("/tmp/doc.docx", "")).toBe(false);
+  test("classifies low chars-per-page as scanned", () => {
+    // 11 chars across 10 pages = 1.1 chars/page
+    const result = classifyPdfContent("/tmp/doc.pdf", "Header text", null, { page_count: 10 });
+    expect(result.contentClass).toBe("scanned");
+    expect(result.shouldRetryWithOcr).toBe(true);
+  });
+
+  test("classifies sparse single-page as sparse-digital (no OCR)", () => {
+    // 26 chars on 1 page with good quality = sparse but valid
+    const result = classifyPdfContent("/tmp/cover.pdf", "Company Annual Report 2026", 0.8, { page_count: 1 });
+    expect(result.contentClass).toBe("sparse-digital");
+    expect(result.shouldRetryWithOcr).toBe(false);
+  });
+
+  test("classifies low quality + low density as mixed", () => {
+    const content = "Some extracted text layer. " + "x".repeat(80);
+    const result = classifyPdfContent("/tmp/mixed.pdf", content, 0.25, { page_count: 5 });
+    expect(result.contentClass).toBe("mixed");
+    expect(result.shouldRetryWithOcr).toBe(true);
+  });
+
+  test("classifies moderate quality concern + moderate density as mixed", () => {
+    const content = "x".repeat(150);
+    const result = classifyPdfContent("/tmp/mixed.pdf", content, 0.35, { page_count: 3 });
+    expect(result.contentClass).toBe("mixed");
+    expect(result.shouldRetryWithOcr).toBe(true);
+  });
+
+  test("returns digital for non-PDF files", () => {
+    const result = classifyPdfContent("/tmp/doc.docx", "", null, {});
+    expect(result.contentClass).toBe("digital");
+    expect(result.shouldRetryWithOcr).toBe(false);
   });
 
   test("is case-insensitive on extension", () => {
-    expect(looksLikeScannedPdf("/tmp/scan.PDF", "")).toBe(true);
+    const result = classifyPdfContent("/tmp/scan.PDF", "", null, {});
+    expect(result.contentClass).toBe("scanned");
+    expect(result.shouldRetryWithOcr).toBe(true);
+  });
+
+  test("defaults page_count to 1 when not in metadata", () => {
+    // 60 chars, no page_count = 60 chars/page, null quality → sparse-digital
+    const result = classifyPdfContent("/tmp/doc.pdf", "x".repeat(60), null, {});
+    expect(result.contentClass).toBe("sparse-digital");
+    expect(result.shouldRetryWithOcr).toBe(false);
+  });
+});
+
+describe("looksLikeScannedPdf (deprecated wrapper)", () => {
+  test("returns true for empty PDF", () => {
+    expect(looksLikeScannedPdf("/tmp/scan.pdf", "")).toBe(true);
+  });
+
+  test("returns false for substantial content", () => {
+    expect(looksLikeScannedPdf("/tmp/doc.pdf", "A".repeat(100))).toBe(false);
+  });
+
+  test("returns false for non-PDF", () => {
+    expect(looksLikeScannedPdf("/tmp/doc.txt", "")).toBe(false);
   });
 });
 

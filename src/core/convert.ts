@@ -36,6 +36,7 @@ export interface ConversionResult {
   outputPath?: string;
   qualityScore?: number | null;
   engine?: string;
+  metadata?: Record<string, unknown>;
 }
 
 export interface ConvertOptions {
@@ -93,6 +94,7 @@ export async function convertFile(
     mimeType: result.mimeType,
     qualityScore: result.quality.score,
     engine: result.engine,
+    metadata: result.metadata,
   };
 }
 
@@ -102,7 +104,10 @@ export type SmartOcrWarning =
   | "image_auto_ocr"
   | "tesseract_missing_image"
   | "tesseract_missing_scanned"
-  | "scanned_pdf_detected";
+  | "scanned_pdf_detected"
+  | "mixed_content_detected"
+  | "sparse_digital_pdf"
+  | "low_quality_extraction";
 
 export interface SmartOcrResult extends ConversionResult {
   usedOcr: boolean;
@@ -144,31 +149,109 @@ export async function convertFileWithSmartOcr(
   let result = await convertFile(filePath, format, options);
   let usedOcr = !!explicitOcr;
 
-  // Scanned PDF detection + auto-retry
-  if (!explicitOcr && looksLikeScannedPdf(filePath, result.content)) {
-    warnings.push("scanned_pdf_detected");
-    try {
-      result = await convertFile(filePath, format, { ...options, ocr: { enabled: true, force: true } });
-      usedOcr = true;
-    } catch (err) {
-      if (isTesseractError(err)) {
-        warnings.push("tesseract_missing_scanned");
-      } else {
-        throw err;
+  // PDF content classification + auto-retry
+  if (!explicitOcr) {
+    const classification = classifyPdfContent(
+      filePath, result.content, result.qualityScore ?? null, result.metadata ?? {},
+    );
+
+    if (classification.contentClass === "sparse-digital") {
+      warnings.push("sparse_digital_pdf");
+    }
+
+    if (classification.shouldRetryWithOcr) {
+      warnings.push(classification.contentClass === "mixed" ? "mixed_content_detected" : "scanned_pdf_detected");
+      try {
+        result = await convertFile(filePath, format, { ...options, ocr: { enabled: true, force: true } });
+        usedOcr = true;
+      } catch (err) {
+        if (isTesseractError(err)) {
+          warnings.push("tesseract_missing_scanned");
+        } else {
+          throw err;
+        }
       }
     }
+  }
+
+  // Low quality warning (after potential OCR retry)
+  if (result.qualityScore != null && result.qualityScore < 0.3) {
+    warnings.push("low_quality_extraction");
   }
 
   return { ...result, usedOcr, warnings };
 }
 
-/** Check if extraction result looks like a scanned/empty PDF */
-export function looksLikeScannedPdf(filePath: string, content: string): boolean {
+// --- PDF content classification ---
+
+export type PdfContentClass = "digital" | "scanned" | "sparse-digital" | "mixed";
+
+export interface PdfClassification {
+  contentClass: PdfContentClass;
+  shouldRetryWithOcr: boolean;
+}
+
+/**
+ * Classify PDF extraction results to decide whether OCR is needed.
+ * Uses chars-per-page ratio and Kreuzberg's quality score instead of
+ * a flat character count threshold.
+ */
+export function classifyPdfContent(
+  filePath: string,
+  content: string,
+  qualityScore: number | null,
+  metadata: Record<string, unknown>,
+): PdfClassification {
   const ext = extname(filePath).toLowerCase();
-  if (ext !== ".pdf") return false;
-  // Empty or near-empty content from a PDF suggests scanned pages
+  if (ext !== ".pdf") {
+    return { contentClass: "digital", shouldRetryWithOcr: false };
+  }
+
   const trimmed = content.trim();
-  return trimmed.length < 50;
+  const charCount = trimmed.length;
+  const pageCount = (typeof metadata?.page_count === "number" ? metadata.page_count : 1);
+  const charsPerPage = charCount / Math.max(pageCount, 1);
+
+  // Truly empty/near-empty: definitely scanned
+  if (charCount < 20) {
+    return { contentClass: "scanned", shouldRetryWithOcr: true };
+  }
+
+  // If we have a quality score, use it for nuanced classification
+  if (qualityScore !== null) {
+    // Low quality + low density: mixed text/image document
+    if (qualityScore < 0.3 && charsPerPage < 100) {
+      return { contentClass: "mixed", shouldRetryWithOcr: true };
+    }
+
+    // Moderate quality concern + moderate density: still likely mixed
+    if (qualityScore < 0.4 && charsPerPage < 200) {
+      return { contentClass: "mixed", shouldRetryWithOcr: true };
+    }
+
+    // Good quality but sparse: legitimate sparse digital content
+    if (qualityScore >= 0.5 && charsPerPage < 100) {
+      return { contentClass: "sparse-digital", shouldRetryWithOcr: false };
+    }
+  }
+
+  // No quality score available — fall back to chars-per-page heuristic
+  if (charsPerPage < 30) {
+    return { contentClass: "scanned", shouldRetryWithOcr: true };
+  }
+
+  // Sparse but no quality signal: assume sparse-digital (don't waste time on OCR)
+  if (charsPerPage < 100) {
+    return { contentClass: "sparse-digital", shouldRetryWithOcr: false };
+  }
+
+  // Normal digital PDF
+  return { contentClass: "digital", shouldRetryWithOcr: false };
+}
+
+/** @deprecated Use classifyPdfContent instead */
+export function looksLikeScannedPdf(filePath: string, content: string): boolean {
+  return classifyPdfContent(filePath, content, null, {}).shouldRetryWithOcr;
 }
 
 const IMAGE_MIMES = new Set([

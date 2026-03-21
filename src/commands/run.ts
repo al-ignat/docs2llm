@@ -159,8 +159,11 @@ export async function convertSingleFile(filePath: string, options: ConvertFileOp
       for (const w of smartResult.warnings) {
         if (w === "image_auto_ocr" && !useStdout) cliLog("⚠ Image detected. Running OCR…");
         if (w === "tesseract_missing_image") cliWarn("⚠ OCR unavailable (Tesseract not installed). Converting without OCR…");
-        if (w === "scanned_pdf_detected" && !useStdout) cliLog("⚠ This looks like a scanned document. Retrying with OCR…");
+        if (w === "scanned_pdf_detected" && !useStdout) cliLog("⚠ Scanned PDF detected. Retrying with OCR…");
+        if (w === "mixed_content_detected" && !useStdout) cliLog("⚠ Mixed text/image PDF detected. Retrying with OCR for better coverage…");
+        if (w === "sparse_digital_pdf" && !useStdout) cliLog("ℹ Sparse digital PDF — no OCR needed.");
         if (w === "tesseract_missing_scanned") cliWarn("⚠ OCR unavailable (Tesseract not installed). Keeping non-OCR result.");
+        if (w === "low_quality_extraction") cliWarn("⚠ Low extraction quality detected. Output may be incomplete.");
       }
 
       // --chunks mode: split and output as JSON
