@@ -23,8 +23,8 @@
   },
   "dependencies": {
     "@clack/prompts": "^1.0",
-    "@kreuzberg/node": "^4",
-    "@kreuzberg/wasm": "^4",
+    "@kreuzberg/node": "^4.5.1",
+    "@kreuzberg/wasm": "^4.5.1",
     "@modelcontextprotocol/sdk": "^1.26.0",
     "defuddle": "^0.14.0",
     "linkedom": "^0.18.12",
