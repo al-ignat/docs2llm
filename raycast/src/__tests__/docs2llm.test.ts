@@ -266,7 +266,7 @@ describe("docs2llm CLI integration", () => {
 
       expect(mocks.execFile).toHaveBeenCalledWith(
         BINARY,
-        ["/tmp/test.pdf", "--stdout", "-f", "md", "--yes"],
+        ["/tmp/test.pdf", "--stdout", "--json", "-f", "md", "--yes"],
         expect.any(Object),
         expect.any(Function),
       );
@@ -277,7 +277,7 @@ describe("docs2llm CLI integration", () => {
 
       expect(mocks.execFile).toHaveBeenCalledWith(
         BINARY,
-        ["/tmp/scan.pdf", "--stdout", "-f", "md", "--yes", "--ocr"],
+        ["/tmp/scan.pdf", "--stdout", "--json", "-f", "md", "--yes", "--ocr"],
         expect.any(Object),
         expect.any(Function),
       );
@@ -288,7 +288,7 @@ describe("docs2llm CLI integration", () => {
 
       expect(mocks.execFile).toHaveBeenCalledWith(
         BINARY,
-        ["/tmp/test.pdf", "--stdout", "-f", "json", "--yes"],
+        ["/tmp/test.pdf", "--stdout", "--json", "-f", "json", "--yes"],
         expect.any(Object),
         expect.any(Function),
       );
@@ -299,7 +299,7 @@ describe("docs2llm CLI integration", () => {
 
       expect(mocks.execFile).toHaveBeenCalledWith(
         BINARY,
-        ["https://example.com", "--stdout", "-f", "md", "--yes"],
+        ["https://example.com", "--stdout", "--json", "-f", "md", "--yes"],
         expect.any(Object),
         expect.any(Function),
       );
@@ -356,15 +356,39 @@ describe("docs2llm CLI integration", () => {
       expect(mocks.execFile).not.toHaveBeenCalled();
     });
 
-    it("returns content with computed word/token stats", async () => {
+    it("parses JSON envelope with metadata from CLI", async () => {
+      const envelope = JSON.stringify({
+        success: true,
+        content: "hello world test content here",
+        words: 5,
+        tokens: 7,
+        engine: "kreuzberg",
+        qualityScore: 0.9,
+        ocrUsed: false,
+        warnings: [],
+        durationMs: 100,
+      });
+      mockExecSuccess(envelope);
+
+      const result = await convertFile("/tmp/test.pdf");
+
+      expect(result.content).toBe("hello world test content here");
+      expect(result.words).toBe(5);
+      expect(result.tokens).toBe(7);
+      expect(result.engine).toBe("kreuzberg");
+      expect(result.qualityScore).toBe(0.9);
+      expect(result.ocrUsed).toBe(false);
+    });
+
+    it("falls back to computeStats for plain text output", async () => {
       mockExecSuccess("hello world test content here");
 
       const result = await convertFile("/tmp/test.pdf");
 
       expect(result.content).toBe("hello world test content here");
       expect(result.words).toBe(5);
-      // tokens ≈ ceil(words * 1.33)
       expect(result.tokens).toBe(Math.ceil(5 * 1.33));
+      expect(result.engine).toBeUndefined();
     });
   });
 

@@ -30,17 +30,33 @@ export function setOutputMode(quiet: boolean, json: boolean) {
   jsonMode = json;
 }
 
+// When --stdout --json are combined, suppress all console output (envelope goes to stdout)
+let envelopeMode = false;
+
+export function setEnvelopeMode(stdout: boolean) {
+  envelopeMode = stdout && jsonMode;
+}
+
 function cliLog(msg: string) {
-  if (!quietMode && !jsonMode) console.log(msg);
+  if (!quietMode && !jsonMode && !envelopeMode) console.log(msg);
 }
 function cliWarn(msg: string) {
-  if (!quietMode && !jsonMode) console.warn(msg);
+  if (!quietMode && !jsonMode && !envelopeMode) console.warn(msg);
 }
 export function cliError(msg: string) {
-  if (!jsonMode) console.error(msg);
+  if (!jsonMode && !envelopeMode) console.error(msg);
 }
 function cliResult(msg: string) {
-  if (!jsonMode) console.log(msg);
+  if (!jsonMode && !envelopeMode) console.log(msg);
+}
+
+/** Classify an error into a machine-readable type for JSON envelope output. */
+export function classifyError(err: unknown): string {
+  if (isTesseractError(err)) return "tesseract_missing";
+  const msg = errorMessage(err);
+  if (msg.includes("Pandoc")) return "pandoc_missing";
+  if (msg.includes("Unsupported") || msg.includes("format")) return "unsupported_format";
+  return "generic";
 }
 
 interface ConversionResult {
@@ -185,7 +201,25 @@ export async function convertSingleFile(filePath: string, options: ConvertFileOp
         return;
       }
 
-      // --stdout mode: write to stdout
+      // --stdout --json combined: JSON envelope with content + metadata on stdout
+      if (useStdout && jsonMode) {
+        const stats = getTokenStats(result.content);
+        const envelope = {
+          success: true,
+          content: result.content,
+          words: stats.words,
+          tokens: stats.tokens,
+          engine: result.engine,
+          qualityScore: result.qualityScore ?? null,
+          ocrUsed: usedOcr || false,
+          warnings: smartResult.warnings,
+          durationMs: Math.round(performance.now() - t0),
+        };
+        process.stdout.write(JSON.stringify(envelope));
+        return;
+      }
+
+      // --stdout mode: write raw content to stdout
       if (useStdout) {
         process.stdout.write(result.formatted);
         return;
@@ -198,7 +232,8 @@ export async function convertSingleFile(filePath: string, options: ConvertFileOp
         const jsonResult: ConversionResult = { success: true, input: filePath, output: plan.outputPath, format: plan.format, tokens: stats.tokens, duration_ms: Math.round(performance.now() - t0), ocr_used: usedOcr || undefined, engine: result.engine };
         process.stdout.write(JSON.stringify(jsonResult));
       } else {
-        cliResult(`✓ ${filePath} → ${plan.outputPath} (${formatTokenStats(stats)})`);
+        const engineSuffix = result.engine ? `, ${result.engine}` : "";
+        cliResult(`✓ ${filePath} → ${plan.outputPath} (${formatTokenStats(stats)}${engineSuffix})`);
       }
 
       // Quality warning
@@ -208,6 +243,10 @@ export async function convertSingleFile(filePath: string, options: ConvertFileOp
     }
   } catch (err) {
     const msg = errorMessage(err);
+    if (envelopeMode) {
+      process.stdout.write(JSON.stringify({ success: false, error: msg, errorType: classifyError(err) }));
+      process.exit(1);
+    }
     if (jsonMode) {
       const jsonResult: ConversionResult = { success: false, input: filePath, format: plan.format, duration_ms: Math.round(performance.now() - t0), error: msg };
       process.stdout.write(JSON.stringify(jsonResult));
@@ -338,7 +377,8 @@ export async function convertFolder(dir: string, options: ConvertFolderOptions) 
           }
           await writeOutput(plan.outputPath, smartResult.formatted);
           const stats = getTokenStats(smartResult.content);
-          cliResult(`✓ ${file} → ${plan.outputPath} (${formatTokenStats(stats)})`);
+          const engineSuffix = smartResult.engine ? `, ${smartResult.engine}` : "";
+          cliResult(`✓ ${file} → ${plan.outputPath} (${formatTokenStats(stats)}${engineSuffix})`);
           if (smartResult.qualityScore != null && smartResult.qualityScore < 0.5) {
             cliWarn(`  ⚠ Low quality extraction. Check the output.`);
           }
@@ -374,6 +414,24 @@ export async function convertUrl(url: string, options: ConvertUrlOptions) {
     if (!useStdout) cliLog(`Fetching ${url}…`);
     const result = await fetchAndConvert(url);
     const formatted = formatOutput(result.content, url, "text/html", {}, format);
+
+    // --stdout --json combined: JSON envelope
+    if (useStdout && jsonMode) {
+      const stats = getTokenStats(result.content);
+      const envelope = {
+        success: true,
+        content: result.content,
+        words: stats.words,
+        tokens: stats.tokens,
+        engine: "pandoc-html",
+        qualityScore: null as number | null,
+        ocrUsed: false,
+        warnings: [] as string[],
+        durationMs: 0,
+      };
+      process.stdout.write(JSON.stringify(envelope));
+      return;
+    }
 
     if (useStdout) {
       process.stdout.write(formatted);
@@ -449,6 +507,24 @@ export async function convertStdin(options: ConvertStdinOptions) {
         tokens: splitResult.tokensPerPart[i],
       }));
       process.stdout.write(JSON.stringify(output, null, 2));
+      return;
+    }
+
+    // --stdout --json combined: JSON envelope
+    if (useStdout && jsonMode) {
+      const stats = getTokenStats(content);
+      const envelope = {
+        success: true,
+        content,
+        words: stats.words,
+        tokens: stats.tokens,
+        engine: "kreuzberg",
+        qualityScore: result.qualityScore ?? null,
+        ocrUsed: false,
+        warnings: [] as string[],
+        durationMs: 0,
+      };
+      process.stdout.write(JSON.stringify(envelope));
       return;
     }
 

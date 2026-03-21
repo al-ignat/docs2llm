@@ -1,6 +1,7 @@
 import {
   Action,
   ActionPanel,
+  Color,
   Detail,
   showInFinder,
   showToast,
@@ -70,6 +71,20 @@ export function ResultView({
             title="Tokens (approx)"
             text={`~${formatNumber(result.tokens)}`}
           />
+          {result.engine && (
+            <Detail.Metadata.Label title="Engine" text={result.engine} />
+          )}
+          {result.qualityScore != null && result.qualityScore < 0.7 && (
+            <Detail.Metadata.TagList title="Quality">
+              <Detail.Metadata.TagList.Item
+                text={result.qualityScore < 0.3 ? "Low" : "Fair"}
+                color={result.qualityScore < 0.3 ? Color.Red : Color.Orange}
+              />
+            </Detail.Metadata.TagList>
+          )}
+          {result.ocrUsed && (
+            <Detail.Metadata.Label title="OCR" text="Used" />
+          )}
         </Detail.Metadata>
       }
       actions={

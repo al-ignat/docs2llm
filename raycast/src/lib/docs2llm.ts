@@ -45,6 +45,10 @@ export interface ConvertResult {
   error?: string;
   words: number;
   tokens: number;
+  engine?: string;
+  qualityScore?: number | null;
+  ocrUsed?: boolean;
+  warnings?: string[];
 }
 
 /**
@@ -206,6 +210,29 @@ function run(args: string[]): Promise<ConvertResult> {
           const msg = isTimeout ? `Timed out after ${TIMEOUT_MS / 1000}s. ${rawMsg}` : rawMsg;
           resolve({ content: "", words: 0, tokens: 0, error: msg });
         } else {
+          // Try parsing as JSON envelope (--stdout --json combined mode)
+          try {
+            const envelope = JSON.parse(stdout);
+            if (typeof envelope === "object" && envelope !== null && "success" in envelope) {
+              if (!envelope.success) {
+                resolve({ content: "", words: 0, tokens: 0, error: envelope.error });
+              } else {
+                resolve({
+                  content: envelope.content ?? "",
+                  words: envelope.words ?? 0,
+                  tokens: envelope.tokens ?? 0,
+                  engine: envelope.engine,
+                  qualityScore: envelope.qualityScore,
+                  ocrUsed: envelope.ocrUsed,
+                  warnings: envelope.warnings,
+                });
+              }
+              return;
+            }
+          } catch {
+            // Not JSON — fall through to plain text parsing
+          }
+          // Fallback: plain text output (older CLI without --json support)
           const stats = computeStats(stdout);
           resolve({ content: stdout, ...stats });
         }
@@ -223,7 +250,7 @@ export async function convertFile(
   const fmt = format || "md";
   const useOcr = ocr ?? prefs.enableOcr;
 
-  const args = [filePath, "--stdout", "-f", fmt, "--yes"];
+  const args = [filePath, "--stdout", "--json", "-f", fmt, "--yes"];
   if (useOcr) args.push("--ocr");
   return run(args);
 }
@@ -233,7 +260,7 @@ export async function convertUrl(
   format?: string,
 ): Promise<ConvertResult> {
   const fmt = format || "md";
-  return run([url, "--stdout", "-f", fmt, "--yes"]);
+  return run([url, "--stdout", "--json", "-f", fmt, "--yes"]);
 }
 
 export async function getVersion(): Promise<string | null> {

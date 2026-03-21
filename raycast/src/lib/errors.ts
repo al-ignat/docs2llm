@@ -23,6 +23,11 @@ export function sanitizeError(raw: string): string {
     return "Pandoc is required. Install: brew install pandoc";
   }
 
+  // Tesseract not installed (OCR)
+  if (lower.includes("tesseract") || lower.includes("tessdata")) {
+    return "OCR unavailable. Install: brew install tesseract";
+  }
+
   // File not found
   if (lower.includes("enoent") || lower.includes("no such file")) {
     return "File not found. It may have been moved or deleted.";
@@ -91,6 +96,14 @@ export function failToast(rawMessage: string): Toast.Options {
     return {
       style: Toast.Style.Failure,
       title: "Pandoc required",
+      message: friendly,
+    };
+  }
+
+  if (lower.includes("tesseract") || lower.includes("tessdata") || lower.includes("ocr unavailable")) {
+    return {
+      style: Toast.Style.Failure,
+      title: "OCR unavailable",
       message: friendly,
     };
   }
