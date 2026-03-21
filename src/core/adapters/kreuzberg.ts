@@ -9,11 +9,16 @@
 import type { Extractor, ExtractOptions, ExtractionResult, EngineName } from "../extraction";
 import { guessMime } from "../mime";
 
+interface KreuzbergTable {
+  markdown?: string;
+}
+
 interface KreuzbergNativeResult {
   content: string;
   mimeType: string;
   metadata: Record<string, unknown>;
   qualityScore?: number | null;
+  tables?: KreuzbergTable[];
 }
 
 type ExtractFileFn = (path: string, mime: any, config?: any) => Promise<KreuzbergNativeResult>;
@@ -45,12 +50,44 @@ export function getKreuzberg(): Promise<KreuzbergModule> {
   return kreuzbergPromise;
 }
 
-export function buildExtractionConfig(ocr: ExtractOptions["ocr"], isWasm: boolean): Record<string, unknown> {
+const PPTX_MIMES = [
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "application/vnd.ms-powerpoint",
+];
+
+export function buildExtractionConfig(
+  ocr: ExtractOptions["ocr"],
+  isWasm: boolean,
+  mimeType?: string,
+): Record<string, unknown> {
   const config: Record<string, unknown> = {
     outputFormat: "markdown",
     enableQualityProcessing: true,
   };
 
+  // PDF: heading detection via font-size clustering + margin filtering
+  if (mimeType === "application/pdf") {
+    config.pdfOptions = {
+      hierarchy: {
+        enabled: true,
+        kClusters: 6,
+        includeBbox: false,
+      },
+      extractMetadata: true,
+      topMarginFraction: 0.05,
+      bottomMarginFraction: 0.05,
+    };
+  }
+
+  // PPTX: slide boundary markers
+  if (mimeType && PPTX_MIMES.includes(mimeType)) {
+    config.pages = {
+      insertPageMarkers: true,
+      markerFormat: "\n---\n",
+    };
+  }
+
+  // OCR
   if (ocr?.enabled || ocr?.force) {
     config.ocr = {
       backend: isWasm ? "tesseract-wasm" : "tesseract",
@@ -65,6 +102,27 @@ export function buildExtractionConfig(ocr: ExtractOptions["ocr"], isWasm: boolea
   return config;
 }
 
+/**
+ * Append table markdown from Kreuzberg's separate `tables[]` array
+ * when the main content doesn't already contain pipe tables.
+ */
+export function injectTables(content: string, tables: KreuzbergTable[] | undefined): string {
+  if (!tables || tables.length === 0) return content;
+  if (/\|.*\|/.test(content)) return content;
+  const parts = tables.map((t) => t.markdown).filter(Boolean);
+  if (parts.length === 0) return content;
+  return content.trim() + "\n\n" + parts.join("\n\n");
+}
+
+/**
+ * Prepend PDF metadata title as a top-level heading when the content
+ * doesn't already start with one.
+ */
+export function prependTitle(content: string, title: string | null | undefined): string {
+  if (!title || /^#{1,6}\s/m.test(content)) return content;
+  return `# ${title}\n\n${content}`;
+}
+
 function toExtractionResult(
   native: KreuzbergNativeResult,
   engine: EngineName,
@@ -72,13 +130,24 @@ function toExtractionResult(
   source: string,
   startMs: number,
 ): ExtractionResult {
+  let content = native.content;
+
+  // Inject tables from Kreuzberg's separate table array
+  content = injectTables(content, native.tables);
+
+  // Surface PDF title as heading
+  const title = native.metadata?.title;
+  if (typeof title === "string") {
+    content = prependTitle(content, title);
+  }
+
   return {
     engine,
     sourceType,
     source,
     mimeType: native.mimeType,
-    contentMarkdown: native.content,
-    contentText: native.content,
+    contentMarkdown: content,
+    contentText: content,
     metadata: native.metadata,
     quality: {
       score: native.qualityScore ?? null,
@@ -102,7 +171,8 @@ export class KreuzbergExtractor implements Extractor {
   async extractFile(filePath: string, options?: ExtractOptions): Promise<ExtractionResult> {
     const startMs = performance.now();
     const mod = await getKreuzberg();
-    const config = buildExtractionConfig(options?.ocr, mod.isWasm);
+    const mime = guessMime(filePath);
+    const config = buildExtractionConfig(options?.ocr, mod.isWasm, mime);
     const native = await mod.extractFile(filePath, null, config);
 
     const engineName: EngineName = mod.isWasm ? "kreuzberg-wasm" : "kreuzberg";
@@ -112,7 +182,7 @@ export class KreuzbergExtractor implements Extractor {
   async extractBytes(data: Uint8Array, mimeType: string, options?: ExtractOptions): Promise<ExtractionResult> {
     const startMs = performance.now();
     const mod = await getKreuzberg();
-    const config = buildExtractionConfig(options?.ocr, mod.isWasm);
+    const config = buildExtractionConfig(options?.ocr, mod.isWasm, mimeType);
     const native = await mod.extractBytes(data, mimeType, config);
 
     const engineName: EngineName = mod.isWasm ? "kreuzberg-wasm" : "kreuzberg";

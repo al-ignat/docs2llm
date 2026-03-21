@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { getExtractor, KreuzbergExtractor, PandocHtmlExtractor } from "../src/core/adapters";
+import { buildExtractionConfig, injectTables, prependTitle } from "../src/core/adapters/kreuzberg";
 import { cleanEmailHtml, cleanPandocMarkdown, convertHtmlToMarkdown, looksLikeEmailHtml, isFragmentHtml } from "../src/core/adapters/pandoc-html";
 import type { ExtractionResult, Extractor } from "../src/core/extraction";
 
@@ -274,5 +275,136 @@ describe("convertHtmlToMarkdown routing", () => {
     const result = await convertHtmlToMarkdown(html, { skipDefuddle: true });
     expect(result.engine).toBe("pandoc-html");
     expect(result.warnings).not.toContain("defuddle_used");
+  });
+});
+
+// --- buildExtractionConfig MIME-aware tuning ---
+
+describe("buildExtractionConfig", () => {
+  test("PDF MIME enables pdfOptions.hierarchy", () => {
+    const config = buildExtractionConfig(undefined, false, "application/pdf");
+    expect(config.pdfOptions).toBeDefined();
+    const pdf = config.pdfOptions as Record<string, unknown>;
+    const hierarchy = pdf.hierarchy as Record<string, unknown>;
+    expect(hierarchy.enabled).toBe(true);
+    expect(hierarchy.kClusters).toBe(6);
+  });
+
+  test("PDF MIME enables margin filtering", () => {
+    const config = buildExtractionConfig(undefined, false, "application/pdf");
+    const pdf = config.pdfOptions as Record<string, unknown>;
+    expect(pdf.topMarginFraction).toBe(0.05);
+    expect(pdf.bottomMarginFraction).toBe(0.05);
+  });
+
+  test("PPTX MIME enables page markers", () => {
+    const config = buildExtractionConfig(
+      undefined,
+      false,
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    );
+    expect(config.pages).toBeDefined();
+    const pages = config.pages as Record<string, unknown>;
+    expect(pages.insertPageMarkers).toBe(true);
+  });
+
+  test("legacy PPT MIME enables page markers", () => {
+    const config = buildExtractionConfig(undefined, false, "application/vnd.ms-powerpoint");
+    expect(config.pages).toBeDefined();
+  });
+
+  test("non-PDF/PPTX MIME returns no pdfOptions or pages", () => {
+    const config = buildExtractionConfig(undefined, false, "text/html");
+    expect(config.pdfOptions).toBeUndefined();
+    expect(config.pages).toBeUndefined();
+  });
+
+  test("no mimeType returns baseline config", () => {
+    const config = buildExtractionConfig(undefined, false);
+    expect(config.pdfOptions).toBeUndefined();
+    expect(config.pages).toBeUndefined();
+    expect(config.outputFormat).toBe("markdown");
+    expect(config.enableQualityProcessing).toBe(true);
+  });
+
+  test("OCR options still work with mimeType", () => {
+    const config = buildExtractionConfig({ enabled: true, language: "deu" }, false, "application/pdf");
+    expect(config.pdfOptions).toBeDefined();
+    expect(config.ocr).toBeDefined();
+    const ocr = config.ocr as Record<string, unknown>;
+    expect(ocr.language).toBe("deu");
+  });
+});
+
+// --- injectTables ---
+
+describe("injectTables", () => {
+  test("appends table markdown when content has no pipe tables", () => {
+    const content = "Some paragraph text.";
+    const tables = [{ markdown: "| A | B |\n|---|---|\n| 1 | 2 |" }];
+    const result = injectTables(content, tables);
+    expect(result).toContain("Some paragraph text.");
+    expect(result).toContain("| A | B |");
+  });
+
+  test("appends multiple tables separated by blank lines", () => {
+    const content = "Text.";
+    const tables = [
+      { markdown: "| X |\n|---|\n| 1 |" },
+      { markdown: "| Y |\n|---|\n| 2 |" },
+    ];
+    const result = injectTables(content, tables);
+    expect(result).toContain("| X |");
+    expect(result).toContain("| Y |");
+  });
+
+  test("is a no-op when content already contains pipe tables", () => {
+    const content = "Text\n\n| Existing | Table |\n|---|---|\n| a | b |";
+    const tables = [{ markdown: "| New | Table |\n|---|---|\n| c | d |" }];
+    const result = injectTables(content, tables);
+    expect(result).toBe(content);
+    expect(result).not.toContain("New");
+  });
+
+  test("is a no-op with empty tables array", () => {
+    const content = "Some content.";
+    expect(injectTables(content, [])).toBe(content);
+  });
+
+  test("is a no-op with undefined tables", () => {
+    const content = "Some content.";
+    expect(injectTables(content, undefined)).toBe(content);
+  });
+});
+
+// --- prependTitle ---
+
+describe("prependTitle", () => {
+  test("adds title heading when content has no heading", () => {
+    const content = "Some paragraph text without a heading.";
+    const result = prependTitle(content, "My Document");
+    expect(result).toBe("# My Document\n\nSome paragraph text without a heading.");
+  });
+
+  test("is a no-op when content already has a heading", () => {
+    const content = "# Existing Heading\n\nSome text.";
+    const result = prependTitle(content, "My Document");
+    expect(result).toBe(content);
+  });
+
+  test("is a no-op when content has heading not at start", () => {
+    const content = "Intro text.\n\n## Section Heading\n\nMore text.";
+    const result = prependTitle(content, "My Document");
+    expect(result).toBe(content);
+  });
+
+  test("is a no-op with null title", () => {
+    const content = "Some text.";
+    expect(prependTitle(content, null)).toBe(content);
+  });
+
+  test("is a no-op with empty string title", () => {
+    const content = "Some text.";
+    expect(prependTitle(content, "")).toBe(content);
   });
 });
