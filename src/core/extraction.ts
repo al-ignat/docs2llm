@@ -32,6 +32,9 @@ export type ExtractionWarning =
   | "tesseract_missing_image"
   | "tesseract_missing_scanned"
   | "scanned_pdf_detected"
+  | "mixed_content_detected"
+  | "sparse_digital_pdf"
+  | "low_quality_extraction"
   | "pandoc_fallback_to_kreuzberg"
   | "pandoc_not_available"
   | "defuddle_used"
@@ -70,7 +73,7 @@ export interface Extractor {
 import { getExtractor } from "./adapters";
 import { guessMime } from "./mime";
 import { extname } from "path";
-import { isImageFile, isTesseractError, looksLikeScannedPdf } from "./convert";
+import { isImageFile, isTesseractError, classifyPdfContent } from "./convert";
 
 /**
  * Extract content from a file using the best available adapter.
@@ -119,24 +122,46 @@ export async function extract(
   // Standard extraction
   let result = await extractor.extractFile(filePath, options);
 
-  // Scanned PDF detection + auto-retry
-  if (!explicitOcr && looksLikeScannedPdf(filePath, result.contentMarkdown)) {
-    result.warnings.push("scanned_pdf_detected");
-    try {
-      const retried = await extractor.extractFile(filePath, {
-        ocr: { enabled: true, force: true },
-        skipTuning: options?.skipTuning,
-      });
-      retried.quality.usedOcr = true;
-      retried.warnings.push("scanned_pdf_detected");
-      return retried;
-    } catch (err) {
-      if (isTesseractError(err)) {
-        result.warnings.push("tesseract_missing_scanned");
-      } else {
-        throw err;
+  // PDF content classification + auto-retry
+  if (!explicitOcr) {
+    const classification = classifyPdfContent(
+      filePath, result.contentMarkdown, result.quality.score, result.metadata,
+    );
+
+    // Set appearsScanned quality signal
+    if (classification.contentClass === "scanned" || classification.contentClass === "mixed") {
+      result.quality.appearsScanned = true;
+    }
+
+    if (classification.contentClass === "sparse-digital") {
+      result.warnings.push("sparse_digital_pdf");
+    }
+
+    if (classification.shouldRetryWithOcr) {
+      const warning = classification.contentClass === "mixed" ? "mixed_content_detected" : "scanned_pdf_detected";
+      result.warnings.push(warning);
+      try {
+        const retried = await extractor.extractFile(filePath, {
+          ocr: { enabled: true, force: true },
+          skipTuning: options?.skipTuning,
+        });
+        retried.quality.usedOcr = true;
+        retried.quality.appearsScanned = true;
+        retried.warnings.push(warning);
+        result = retried;
+      } catch (err) {
+        if (isTesseractError(err)) {
+          result.warnings.push("tesseract_missing_scanned");
+        } else {
+          throw err;
+        }
       }
     }
+  }
+
+  // Low quality warning (after potential OCR retry)
+  if (result.quality.score != null && result.quality.score < 0.3) {
+    result.warnings.push("low_quality_extraction");
   }
 
   return result;
