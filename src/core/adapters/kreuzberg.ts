@@ -6,7 +6,7 @@
  * every MIME type that no more-specific adapter claims.
  */
 
-import type { Extractor, ExtractOptions, ExtractionResult, EngineName } from "../extraction";
+import type { Extractor, ExtractOptions, ExtractionResult, ExtractionWarning, EngineName } from "../extraction";
 import { guessMime } from "../mime";
 
 interface KreuzbergTable {
@@ -123,6 +123,27 @@ export function prependTitle(content: string, title: string | null | undefined):
   return `# ${title}\n\n${content}`;
 }
 
+/**
+ * Strip residual HTML tags from PPTX extraction output.
+ * Kreuzberg's PPTX handler often leaves raw HTML in the content;
+ * this cleans it to plain markdown text.
+ */
+export function cleanPptxContent(content: string): string {
+  return content
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function isPptxMime(mimeType: string): boolean {
+  return PPTX_MIMES.includes(mimeType);
+}
+
 function toExtractionResult(
   native: KreuzbergNativeResult,
   engine: EngineName,
@@ -131,6 +152,7 @@ function toExtractionResult(
   startMs: number,
 ): ExtractionResult {
   let content = native.content;
+  const warnings: ExtractionWarning[] = [];
 
   // Inject tables from Kreuzberg's separate table array
   content = injectTables(content, native.tables);
@@ -139,6 +161,12 @@ function toExtractionResult(
   const title = native.metadata?.title;
   if (typeof title === "string") {
     content = prependTitle(content, title);
+  }
+
+  // PPTX: strip residual HTML tags
+  if (isPptxMime(native.mimeType) && /<[^>]+>/.test(content)) {
+    content = cleanPptxContent(content);
+    warnings.push("pptx_html_cleaned");
   }
 
   return {
@@ -154,7 +182,7 @@ function toExtractionResult(
       usedOcr: false,
       appearsScanned: false,
     },
-    warnings: [],
+    warnings,
     timings: {
       totalMs: Math.round(performance.now() - startMs),
     },

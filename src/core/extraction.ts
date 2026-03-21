@@ -35,7 +35,8 @@ export type ExtractionWarning =
   | "pandoc_fallback_to_kreuzberg"
   | "pandoc_not_available"
   | "defuddle_used"
-  | "defuddle_empty_fallback";
+  | "defuddle_empty_fallback"
+  | "pptx_html_cleaned";
 
 // === The normalized result contract ===
 export interface ExtractionResult {

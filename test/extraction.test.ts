@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { getExtractor, KreuzbergExtractor, PandocHtmlExtractor } from "../src/core/adapters";
-import { buildExtractionConfig, injectTables, prependTitle } from "../src/core/adapters/kreuzberg";
+import { buildExtractionConfig, injectTables, prependTitle, cleanPptxContent } from "../src/core/adapters/kreuzberg";
 import { cleanEmailHtml, cleanPandocMarkdown, convertHtmlToMarkdown, looksLikeEmailHtml, isFragmentHtml } from "../src/core/adapters/pandoc-html";
 import type { ExtractionResult, Extractor } from "../src/core/extraction";
 
@@ -406,5 +406,52 @@ describe("prependTitle", () => {
   test("is a no-op with empty string title", () => {
     const content = "Some text.";
     expect(prependTitle(content, "")).toBe(content);
+  });
+});
+
+// --- cleanPptxContent ---
+
+describe("cleanPptxContent", () => {
+  test("strips HTML tags", () => {
+    const content = '<div class="slide"><p>Hello</p><span>World</span></div>';
+    const result = cleanPptxContent(content);
+    expect(result).toBe("HelloWorld");
+    expect(result).not.toContain("<");
+    expect(result).not.toContain(">");
+  });
+
+  test("decodes common HTML entities", () => {
+    const content = "A&amp;B &lt;C&gt; &quot;D&quot; foo&nbsp;bar";
+    const result = cleanPptxContent(content);
+    expect(result).toBe('A&B <C> "D" foo bar');
+  });
+
+  test("collapses excessive blank lines", () => {
+    const content = "Slide 1\n\n\n\n\nSlide 2\n\n\n\nSlide 3";
+    const result = cleanPptxContent(content);
+    expect(result).toBe("Slide 1\n\nSlide 2\n\nSlide 3");
+  });
+
+  test("preserves text content between tags", () => {
+    const content = "<h1>Title</h1><p>First paragraph.</p><p>Second paragraph.</p>";
+    const result = cleanPptxContent(content);
+    expect(result).toContain("Title");
+    expect(result).toContain("First paragraph.");
+    expect(result).toContain("Second paragraph.");
+  });
+
+  test("handles mixed content with markdown and HTML", () => {
+    const content = "# Heading\n\n<p>Some text</p>\n\n- bullet point";
+    const result = cleanPptxContent(content);
+    expect(result).toContain("# Heading");
+    expect(result).toContain("Some text");
+    expect(result).toContain("- bullet point");
+    expect(result).not.toContain("<p>");
+  });
+
+  test("returns trimmed output", () => {
+    const content = "  \n\n  <p>Hello</p>  \n\n  ";
+    const result = cleanPptxContent(content);
+    expect(result).toBe("Hello");
   });
 });
