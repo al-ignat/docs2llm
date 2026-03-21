@@ -23,6 +23,18 @@ describe("sanitizeError", () => {
     );
   });
 
+  it("detects Tesseract missing", () => {
+    expect(sanitizeError("tesseract: command not found")).toBe(
+      "OCR unavailable. Install: brew install tesseract",
+    );
+  });
+
+  it("detects TESSDATA_PREFIX error", () => {
+    expect(sanitizeError("Error: TESSDATA_PREFIX not set")).toBe(
+      "OCR unavailable. Install: brew install tesseract",
+    );
+  });
+
   it("detects ENOENT", () => {
     expect(sanitizeError("ENOENT: no such file or directory")).toBe(
       "File not found. It may have been moved or deleted.",
@@ -117,6 +129,13 @@ describe("failToast", () => {
     expect(result.message).toBe(
       "Conversion timed out. Try a smaller file, or disable OCR.",
     );
+  });
+
+  it("returns OCR title for Tesseract errors", () => {
+    const result = failToast("tesseract: command not found");
+    expect(result.title).toBe("OCR unavailable");
+    expect(result.message).toBe("OCR unavailable. Install: brew install tesseract");
+    expect(result.style).toBe("failure");
   });
 
   it("returns generic title for other errors", () => {
