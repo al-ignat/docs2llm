@@ -6,8 +6,8 @@
       "name": "docs2llm",
       "dependencies": {
         "@clack/prompts": "^1.0",
-        "@kreuzberg/node": "^4",
-        "@kreuzberg/wasm": "^4",
+        "@kreuzberg/node": "^4.5.1",
+        "@kreuzberg/wasm": "^4.5.1",
         "@modelcontextprotocol/sdk": "^1.26.0",
         "defuddle": "^0.14.0",
         "linkedom": "^0.18.12",
@@ -25,21 +25,21 @@
 
     "@clack/prompts": ["@clack/prompts@1.0.1", "", { "dependencies": { "@clack/core": "1.0.1", "picocolors": "^1.0.0", "sisteransi": "^1.0.5" } }, "sha512-/42G73JkuYdyWZ6m8d/CJtBrGl1Hegyc7Fy78m5Ob+jF85TOUmLR5XLce/U3LxYAw0kJ8CT5aI99RIvPHcGp/Q=="],
 
-    "@emnapi/runtime": ["@emnapi/runtime@1.8.1", "", { "dependencies": { "tslib": "^2.4.0" } }, "sha512-mehfKSMWjjNol8659Z8KxEMrdSJDDot5SXMq00dM8BN4o+CLNXQ0xH2V7EchNHV4RmbZLmmPdEaXZc5H2FXmDg=="],
+    "@emnapi/runtime": ["@emnapi/runtime@1.9.1", "", { "dependencies": { "tslib": "^2.4.0" } }, "sha512-VYi5+ZVLhpgK4hQ0TAjiQiZ6ol0oe4mBx7mVv7IflsiEp0OWoVsp/+f9Vc1hOhE0TtkORVrI1GvzyreqpgWtkA=="],
 
     "@hono/node-server": ["@hono/node-server@1.19.9", "", { "peerDependencies": { "hono": "^4" } }, "sha512-vHL6w3ecZsky+8P5MD+eFfaGTyCeOHUIFYMGpQGbrBTSmNNoxv0if69rEZ5giu36weC5saFuznL411gRX7bJDw=="],
 
-    "@kreuzberg/node": ["@kreuzberg/node@4.3.8", "", { "dependencies": { "@emnapi/runtime": "1.8.1", "which": "^6.0.1" }, "optionalDependencies": { "@kreuzberg/node-darwin-arm64": "4.3.8", "@kreuzberg/node-linux-arm64-gnu": "4.3.8", "@kreuzberg/node-linux-x64-gnu": "4.3.8", "@kreuzberg/node-win32-x64-msvc": "4.3.8" }, "bin": { "kreuzberg": "dist/cli.js" } }, "sha512-0Eh4FFWofkx4RhA4oiScpqzW51VgvxFjyIyVCbOjFOrPdNjWI3Fxuaq7VCQisBqlNEDDnoT6zo7jZP2Ng1C69g=="],
+    "@kreuzberg/node": ["@kreuzberg/node@4.5.1", "", { "dependencies": { "@emnapi/runtime": "1.9.1", "which": "^6.0.1" }, "optionalDependencies": { "@kreuzberg/node-darwin-arm64": "4.5.1", "@kreuzberg/node-linux-arm64-gnu": "4.5.1", "@kreuzberg/node-linux-x64-gnu": "4.5.1", "@kreuzberg/node-win32-x64-msvc": "4.5.1" }, "bin": { "kreuzberg": "dist/cli.js" } }, "sha512-bNi11Zf0hFr+a08BLodq0R9jjHud1+RDJrq2V5VqSaxgFK+UGSKjwaus82iQ9qnRRg1z3vWUO5nGCSHQyGFxxg=="],
 
-    "@kreuzberg/node-darwin-arm64": ["@kreuzberg/node-darwin-arm64@4.3.8", "", { "os": "darwin", "cpu": "arm64" }, "sha512-Fy7KWjWkriJl1XIsKpcyJkAKzjCAEjAEfXi8pnhUzBfLEdZIW1EcX5V8tEpZyuMmFMJJg9ogTecEYOsfm+Mcrg=="],
+    "@kreuzberg/node-darwin-arm64": ["@kreuzberg/node-darwin-arm64@4.5.1", "", { "os": "darwin", "cpu": "arm64" }, "sha512-gBAwdRY4gAkj1jt3giSVTWO45Fm5Eaq9RA3z/AysVYdD3adNQz4800xUx6ytOrSKFLWt95dJl7VNBnfKEoD6CQ=="],
 
-    "@kreuzberg/node-linux-arm64-gnu": ["@kreuzberg/node-linux-arm64-gnu@4.3.8", "", { "os": "linux", "cpu": "arm64" }, "sha512-bjAdReE12NfnocA7IHHoR0MOfG6Ktpaef9/ovd+tTebU2jz/8AaNlJQcweGOqwxuw3jHllCo1007o8n1OYZ36Q=="],
+    "@kreuzberg/node-linux-arm64-gnu": ["@kreuzberg/node-linux-arm64-gnu@4.5.1", "", { "os": "linux", "cpu": "arm64" }, "sha512-pchIunGk77DPeyK+XbvaNCyaD2IcvKJTeF3qcS9oQuDVMagPEY7SSmkaQ/on2qHaKTaBgDiBkcLed4XjNwNwwQ=="],
 
-    "@kreuzberg/node-linux-x64-gnu": ["@kreuzberg/node-linux-x64-gnu@4.3.8", "", { "os": "linux", "cpu": "x64" }, "sha512-mUWGnbNCmO6RZFTW3Bn8WUfA+0GuMKIZGFSfoHQsLXg/GV21ZSWBLzj54FXxSxbK8FSTys0BxkhEkdrAbHPxTA=="],
+    "@kreuzberg/node-linux-x64-gnu": ["@kreuzberg/node-linux-x64-gnu@4.5.1", "", { "os": "linux", "cpu": "x64" }, "sha512-YW64yC53swBKoWAEhz1rWoN14sjUTq1SAY19BjESUZH3Gb8qO/aCIqirzWbnWuEm7KBp418mI3iTxa2B9ETj7g=="],
 
-    "@kreuzberg/node-win32-x64-msvc": ["@kreuzberg/node-win32-x64-msvc@4.3.8", "", { "os": "win32", "cpu": "x64" }, "sha512-szwE7BzI/2Fe/z7frl6RrkTl0hD51OndxJZjciRapJdPERWIQ5BLVhPnH4e61tLnEGL+XuKOfROCE/b8tEfwnQ=="],
+    "@kreuzberg/node-win32-x64-msvc": ["@kreuzberg/node-win32-x64-msvc@4.5.1", "", { "os": "win32", "cpu": "x64" }, "sha512-hEZCrB51TnKqFZRYrQ+0DWIFhbUzF56gpfG/ao1zoUI5DjsXNrdJwhwiltrDO58rBPsB9Wxu6rCuCpifMHEooQ=="],
 
-    "@kreuzberg/wasm": ["@kreuzberg/wasm@4.3.8", "", { "optionalDependencies": { "tesseract-wasm": "^0.11.0" } }, "sha512-p45wP8gigPvrrR7qccqFPGtT9g66zhhnwUpjd4MhbiyKucplIoq7OhODRTh+UTiZC5GdxARl/Fgb+ATcmieUDQ=="],
+    "@kreuzberg/wasm": ["@kreuzberg/wasm@4.5.1", "", { "optionalDependencies": { "tesseract-wasm": "^0.11.0" } }, "sha512-ju67sD9AAC3qVLLA5F74mgM4MQT1CSZUm0hOsDDr27DEY3GdLuXx6n54UDJIw2uVDAPAlLqEzUQONQ4ftdWcEg=="],
 
     "@mixmark-io/domino": ["@mixmark-io/domino@2.2.0", "", {}, "sha512-Y28PR25bHXUg88kCV7nivXrP2Nj2RueZ3/l/jdx6J9f8J4nsEGcgX0Qe6lt7Pa+J79+kPiJU3LguR6O/6zrLOw=="],
 
