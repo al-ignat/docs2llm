@@ -334,6 +334,20 @@ describe("buildExtractionConfig", () => {
     const ocr = config.ocr as Record<string, unknown>;
     expect(ocr.language).toBe("deu");
   });
+
+  test("skipTuning disables PDF and PPTX config", () => {
+    const pdfConfig = buildExtractionConfig(undefined, false, "application/pdf", true);
+    expect(pdfConfig.pdfOptions).toBeUndefined();
+
+    const pptxConfig = buildExtractionConfig(
+      undefined,
+      false,
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      true,
+    );
+    expect(pptxConfig.pages).toBeUndefined();
+    expect(pptxConfig.outputFormat).toBe("markdown");
+  });
 });
 
 // --- injectTables ---

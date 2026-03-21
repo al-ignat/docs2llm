@@ -59,6 +59,7 @@ export function buildExtractionConfig(
   ocr: ExtractOptions["ocr"],
   isWasm: boolean,
   mimeType?: string,
+  skipTuning?: boolean,
 ): Record<string, unknown> {
   const config: Record<string, unknown> = {
     outputFormat: "markdown",
@@ -66,7 +67,7 @@ export function buildExtractionConfig(
   };
 
   // PDF: heading detection via font-size clustering + margin filtering
-  if (mimeType === "application/pdf") {
+  if (!skipTuning && mimeType === "application/pdf") {
     config.pdfOptions = {
       hierarchy: {
         enabled: true,
@@ -80,7 +81,7 @@ export function buildExtractionConfig(
   }
 
   // PPTX: slide boundary markers
-  if (mimeType && PPTX_MIMES.includes(mimeType)) {
+  if (!skipTuning && mimeType && PPTX_MIMES.includes(mimeType)) {
     config.pages = {
       insertPageMarkers: true,
       markerFormat: "\n---\n",
@@ -150,23 +151,26 @@ function toExtractionResult(
   sourceType: "file" | "bytes",
   source: string,
   startMs: number,
+  skipTuning?: boolean,
 ): ExtractionResult {
   let content = native.content;
   const warnings: ExtractionWarning[] = [];
 
-  // Inject tables from Kreuzberg's separate table array
-  content = injectTables(content, native.tables);
+  if (!skipTuning) {
+    // Inject tables from Kreuzberg's separate table array
+    content = injectTables(content, native.tables);
 
-  // Surface PDF title as heading
-  const title = native.metadata?.title;
-  if (typeof title === "string") {
-    content = prependTitle(content, title);
-  }
+    // Surface PDF title as heading
+    const title = native.metadata?.title;
+    if (typeof title === "string") {
+      content = prependTitle(content, title);
+    }
 
-  // PPTX: strip residual HTML tags
-  if (isPptxMime(native.mimeType) && /<[^>]+>/.test(content)) {
-    content = cleanPptxContent(content);
-    warnings.push("pptx_html_cleaned");
+    // PPTX: strip residual HTML tags
+    if (isPptxMime(native.mimeType) && /<[^>]+>/.test(content)) {
+      content = cleanPptxContent(content);
+      warnings.push("pptx_html_cleaned");
+    }
   }
 
   return {
@@ -200,20 +204,20 @@ export class KreuzbergExtractor implements Extractor {
     const startMs = performance.now();
     const mod = await getKreuzberg();
     const mime = guessMime(filePath);
-    const config = buildExtractionConfig(options?.ocr, mod.isWasm, mime);
+    const config = buildExtractionConfig(options?.ocr, mod.isWasm, mime, options?.skipTuning);
     const native = await mod.extractFile(filePath, null, config);
 
     const engineName: EngineName = mod.isWasm ? "kreuzberg-wasm" : "kreuzberg";
-    return toExtractionResult(native, engineName, "file", filePath, startMs);
+    return toExtractionResult(native, engineName, "file", filePath, startMs, options?.skipTuning);
   }
 
   async extractBytes(data: Uint8Array, mimeType: string, options?: ExtractOptions): Promise<ExtractionResult> {
     const startMs = performance.now();
     const mod = await getKreuzberg();
-    const config = buildExtractionConfig(options?.ocr, mod.isWasm, mimeType);
+    const config = buildExtractionConfig(options?.ocr, mod.isWasm, mimeType, options?.skipTuning);
     const native = await mod.extractBytes(data, mimeType, config);
 
     const engineName: EngineName = mod.isWasm ? "kreuzberg-wasm" : "kreuzberg";
-    return toExtractionResult(native, engineName, "bytes", `bytes(${mimeType})`, startMs);
+    return toExtractionResult(native, engineName, "bytes", `bytes(${mimeType})`, startMs, options?.skipTuning);
   }
 }

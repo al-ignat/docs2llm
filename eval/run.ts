@@ -8,7 +8,8 @@
  *   bun run eval/run.ts --fixture=myfile.pdf
  *   bun run eval/run.ts --json
  *   bun run eval/run.ts --verbose
- *   bun run eval/run.ts --compare          # A/B: Defuddle vs baseline on HTML fixtures
+ *   bun run eval/run.ts --compare              # A/B: Defuddle vs baseline on HTML fixtures
+ *   bun run eval/run.ts --compare-kreuzberg    # A/B: tuned vs baseline Kreuzberg on non-HTML
  */
 
 import { mkdir, writeFile } from "fs/promises";
@@ -36,6 +37,7 @@ function parseArgs(argv: string[]) {
   let jsonOutput = false;
   let verbose = false;
   let compare = false;
+  let compareKreuzberg = false;
 
   for (const arg of argv) {
     if (arg.startsWith("--class=")) {
@@ -48,10 +50,12 @@ function parseArgs(argv: string[]) {
       verbose = true;
     } else if (arg === "--compare") {
       compare = true;
+    } else if (arg === "--compare-kreuzberg") {
+      compareKreuzberg = true;
     }
   }
 
-  return { filterClass, filterFixture, jsonOutput, verbose, compare };
+  return { filterClass, filterFixture, jsonOutput, verbose, compare, compareKreuzberg };
 }
 
 // --- Engine version detection ---
@@ -159,6 +163,61 @@ function formatCompareTable(rows: CompareRow[]): string {
   return lines.join("\n");
 }
 
+function formatKreuzbergCompareTable(rows: CompareRow[]): string {
+  const lines: string[] = [];
+  const color = {
+    green: (s: string) => `\x1b[32m${s}\x1b[0m`,
+    red: (s: string) => `\x1b[31m${s}\x1b[0m`,
+    bold: (s: string) => `\x1b[1m${s}\x1b[0m`,
+    dim: (s: string) => `\x1b[2m${s}\x1b[0m`,
+  };
+
+  lines.push("");
+  lines.push(color.bold("  A/B: Non-HTML fixtures (Tuned Kreuzberg vs Baseline)"));
+  lines.push("");
+
+  const header = `  ${"Fixture".padEnd(45)} ${"Baseline".padStart(10)} ${"Tuned".padStart(10)} ${"Delta".padStart(10)}`;
+  lines.push(color.bold(header));
+  lines.push(`  ${"─".repeat(77)}`);
+
+  for (const row of rows) {
+    const name = `${row.documentClass}/${row.fixture}`.slice(0, 44).padEnd(45);
+    const base = row.baseline.toFixed(2).padStart(10);
+    const tuned = row.defuddle.toFixed(2).padStart(10);
+
+    let deltaStr: string;
+    if (row.delta > 0.005) {
+      deltaStr = color.green(`+${row.delta.toFixed(2)}`.padStart(10));
+    } else if (row.delta < -0.005) {
+      deltaStr = color.red(row.delta.toFixed(2).padStart(10));
+    } else {
+      deltaStr = color.dim(" 0.00".padStart(10));
+    }
+
+    lines.push(`  ${name} ${base} ${tuned} ${deltaStr}`);
+  }
+
+  lines.push(`  ${"─".repeat(77)}`);
+
+  if (rows.length > 0) {
+    const avgDelta = rows.reduce((s, r) => s + r.delta, 0) / rows.length;
+    const avgBase = rows.reduce((s, r) => s + r.baseline, 0) / rows.length;
+    const avgTuned = rows.reduce((s, r) => s + r.defuddle, 0) / rows.length;
+    const name = color.bold("Average".padEnd(45));
+    const base = avgBase.toFixed(2).padStart(10);
+    const tuned = avgTuned.toFixed(2).padStart(10);
+    const delta = avgDelta > 0.005
+      ? color.green(`+${avgDelta.toFixed(2)}`.padStart(10))
+      : avgDelta < -0.005
+        ? color.red(avgDelta.toFixed(2).padStart(10))
+        : color.dim(" 0.00".padStart(10));
+    lines.push(`  ${name} ${base} ${tuned} ${delta}`);
+  }
+
+  lines.push("");
+  return lines.join("\n");
+}
+
 // --- Main ---
 
 async function main() {
@@ -236,6 +295,52 @@ async function main() {
     }
 
     console.log(formatCompareTable(rows));
+    return;
+  }
+
+  // --- Kreuzberg A/B compare mode ---
+  if (args.compareKreuzberg) {
+    const nonHtmlFixtures = fixtures.filter((f) => !HTML_CLASSES.has(f.documentClass));
+    if (nonHtmlFixtures.length === 0) {
+      console.error("No non-HTML fixtures found for Kreuzberg comparison.");
+      process.exit(1);
+    }
+
+    console.log(`\n  Running Kreuzberg A/B comparison on ${nonHtmlFixtures.length} fixture(s)...\n`);
+
+    const rows: CompareRow[] = [];
+    for (const fixture of nonHtmlFixtures) {
+      const useSmartOcr = fixture.documentClass === "pdf-scanned" || fixture.meta.expect?.requiresOcr;
+
+      // Baseline: no MIME-aware tuning
+      const baselineResult = await extract(fixture.filePath, { smartOcr: useSmartOcr, skipTuning: true });
+      const baselineScores = scoreFixture(baselineResult.contentMarkdown, fixture);
+      const baselineScore = computeOverall(baselineScores);
+
+      // Tuned: full MIME-aware config + post-processing
+      const tunedResult = await extract(fixture.filePath, { smartOcr: useSmartOcr });
+      const tunedScores = scoreFixture(tunedResult.contentMarkdown, fixture);
+      const tunedScore = computeOverall(tunedScores);
+
+      rows.push({
+        fixture: fixture.fileName,
+        documentClass: fixture.documentClass,
+        baseline: baselineScore,
+        defuddle: tunedScore, // reuse field — labeled "Tuned" in output
+        delta: tunedScore - baselineScore,
+        skipped: false,
+      });
+
+      if (args.verbose) {
+        console.log(
+          `  ${fixture.documentClass}/${fixture.fileName}: ` +
+            `baseline=${baselineScore.toFixed(2)} tuned=${tunedScore.toFixed(2)} ` +
+            `delta=${(tunedScore - baselineScore).toFixed(2)}`,
+        );
+      }
+    }
+
+    console.log(formatKreuzbergCompareTable(rows));
     return;
   }
 

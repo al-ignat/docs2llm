@@ -55,6 +55,7 @@ export interface ExtractionResult {
 // === The extractor interface ===
 export interface ExtractOptions {
   ocr?: { enabled?: boolean; force?: boolean; language?: string };
+  skipTuning?: boolean;
 }
 
 export interface Extractor {
@@ -98,7 +99,10 @@ export async function extract(
   // Image auto-OCR
   if (!explicitOcr && isImg) {
     try {
-      const result = await extractor.extractFile(filePath, { ocr: { enabled: true, force: true } });
+      const result = await extractor.extractFile(filePath, {
+        ocr: { enabled: true, force: true },
+        skipTuning: options?.skipTuning,
+      });
       result.quality.usedOcr = true;
       result.warnings.push("image_auto_ocr");
       return result;
@@ -119,7 +123,10 @@ export async function extract(
   if (!explicitOcr && looksLikeScannedPdf(filePath, result.contentMarkdown)) {
     result.warnings.push("scanned_pdf_detected");
     try {
-      const retried = await extractor.extractFile(filePath, { ocr: { enabled: true, force: true } });
+      const retried = await extractor.extractFile(filePath, {
+        ocr: { enabled: true, force: true },
+        skipTuning: options?.skipTuning,
+      });
       retried.quality.usedOcr = true;
       retried.warnings.push("scanned_pdf_detected");
       return retried;
