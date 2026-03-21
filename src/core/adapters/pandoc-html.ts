@@ -1,13 +1,13 @@
 /**
- * Pandoc HTML extraction adapter.
+ * HTML extraction adapter.
  *
- * Specialized adapter for HTML → Markdown conversion. Uses Pandoc for
- * high-fidelity table handling (rowspan/colspan, grid tables), with
- * Kreuzberg as fallback when Pandoc is unavailable or fails.
+ * Specialized adapter for HTML → Markdown conversion. Uses Kreuzberg
+ * as the primary converter (clean pipe tables, no escaping artifacts),
+ * with Pandoc for email HTML cleanup and as a fallback.
  *
  * For article/webpage HTML, Defuddle preprocesses the HTML to strip
- * web boilerplate (nav, sidebar, footer, ads) before Pandoc conversion.
- * Email HTML and short fragments bypass Defuddle entirely.
+ * web boilerplate (nav, sidebar, footer, ads) before Kreuzberg conversion.
+ * Email HTML bypasses Defuddle and routes through Pandoc.
  */
 
 import type { Extractor, ExtractOptions, ExtractionResult, ExtractionWarning, EngineName } from "../extraction";
@@ -102,7 +102,17 @@ export function isFragmentHtml(html: string): boolean {
     && !/<body[\s>]/i.test(html);
 }
 
-/** Run Pandoc → Kreuzberg fallback chain on HTML. */
+/** Convert HTML to Markdown via Kreuzberg (primary path — clean output, pipe tables). */
+async function kreuzbergHtmlToMarkdown(html: string): Promise<string> {
+  const mod = await getKreuzberg();
+  const buffer = new TextEncoder().encode(html);
+  const result = await mod.extractBytes(buffer, "text/html", {
+    outputFormat: "markdown",
+  });
+  return result.content;
+}
+
+/** Run Pandoc → Kreuzberg fallback chain on HTML (used for email HTML). */
 async function pandocOrKreuzbergFallback(
   html: string,
   warnings: ExtractionWarning[],
@@ -116,21 +126,7 @@ async function pandocOrKreuzbergFallback(
     warnings.push("pandoc_fallback_to_kreuzberg");
   }
 
-  // Fallback: Kreuzberg (handles simple tables, no merged cell support)
-  const mod = await getKreuzberg();
-  const buffer = new TextEncoder().encode(html);
-  const result = await mod.extractBytes(buffer, "text/html", {
-    outputFormat: "markdown",
-    htmlOptions: {
-      preprocessing: {
-        enabled: true,
-        preset: "aggressive",
-        removeNavigation: true,
-        removeForms: true,
-      },
-    },
-  });
-  return result.content;
+  return kreuzbergHtmlToMarkdown(html);
 }
 
 export interface ConvertHtmlOptions {
@@ -140,9 +136,9 @@ export interface ConvertHtmlOptions {
 
 /**
  * Convert HTML to Markdown with intelligent routing:
- * - Email HTML (MSO artifacts): cleanEmailHtml → Pandoc
- * - Fragment HTML (<2KB, no <html>/<body>): straight to Pandoc
- * - Article/webpage HTML: Defuddle preprocessing → Pandoc
+ * - Email HTML (MSO artifacts): cleanEmailHtml → Pandoc (best for MSO cleanup)
+ * - Fragment HTML (<2KB, no <html>/<body>): straight to Kreuzberg
+ * - Article/webpage HTML: Defuddle preprocessing → Kreuzberg
  */
 export async function convertHtmlToMarkdown(
   html: string,
@@ -150,39 +146,37 @@ export async function convertHtmlToMarkdown(
 ): Promise<{ content: string; warnings: ExtractionWarning[]; engine: EngineName }> {
   const warnings: ExtractionWarning[] = [];
 
-  // Email HTML: use existing cleanup path, skip Defuddle
+  // Email HTML: Pandoc handles MSO cleanup best
   if (looksLikeEmailHtml(html)) {
     html = cleanEmailHtml(html);
     const content = await pandocOrKreuzbergFallback(html, warnings);
     return { content, warnings, engine: "pandoc-html" };
   }
 
-  // Fragment HTML: too short for Defuddle to help
+  // Fragment HTML: too short for Defuddle, use Kreuzberg directly
   if (isFragmentHtml(html)) {
-    const content = await pandocOrKreuzbergFallback(html, warnings);
-    return { content, warnings, engine: "pandoc-html" };
+    const content = await kreuzbergHtmlToMarkdown(html);
+    return { content, warnings, engine: "kreuzberg" };
   }
 
-  // Article/webpage HTML: try Defuddle preprocessing
+  // Article/webpage HTML: try Defuddle preprocessing → Kreuzberg
   if (!options?.skipDefuddle) {
     try {
       const defResult = await defuddleHtml(html);
       if (defResult) {
         warnings.push("defuddle_used");
-        // Feed Defuddle's cleaned HTML through Pandoc for table handling
-        const content = await pandocOrKreuzbergFallback(defResult.cleanedHtml, warnings);
-        return { content, warnings, engine: "defuddle+pandoc-html" };
+        const content = await kreuzbergHtmlToMarkdown(defResult.cleanedHtml);
+        return { content, warnings, engine: "defuddle+kreuzberg" };
       }
     } catch {
-      // Defuddle failed — fall through to existing path
+      // Defuddle failed — fall through to direct Kreuzberg
     }
   }
 
-  // Fallback: existing Pandoc → Kreuzberg path
+  // Fallback: Kreuzberg on raw HTML
   warnings.push("defuddle_empty_fallback");
-  html = cleanEmailHtml(html); // still clean MSO artifacts just in case
-  const content = await pandocOrKreuzbergFallback(html, warnings);
-  return { content, warnings, engine: "pandoc-html" };
+  const content = await kreuzbergHtmlToMarkdown(html);
+  return { content, warnings, engine: "kreuzberg" };
 }
 
 export class PandocHtmlExtractor implements Extractor {

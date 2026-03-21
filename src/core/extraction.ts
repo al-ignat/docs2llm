@@ -7,7 +7,7 @@
  */
 
 // Engine identifiers (extensible for Defuddle, Docling, etc.)
-export type EngineName = "kreuzberg" | "kreuzberg-wasm" | "pandoc-html" | "defuddle+pandoc-html";
+export type EngineName = "kreuzberg" | "kreuzberg-wasm" | "pandoc-html" | "defuddle+pandoc-html" | "defuddle+kreuzberg";
 
 // How the source was provided
 export type SourceType = "file" | "bytes" | "html-string" | "url";

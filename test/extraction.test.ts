@@ -97,7 +97,7 @@ describe("ExtractionResult shape", () => {
     const data = new TextEncoder().encode(html);
     const result = await adapter.extractBytes(data, "text/html");
     assertExtractionResultShape(result);
-    expect(result.engine).toBe("pandoc-html");
+    expect(result.engine).toBe("kreuzberg");
     expect(result.sourceType).toBe("bytes");
     expect(result.contentMarkdown).toContain("Hello");
     expect(result.contentMarkdown).toContain("World");
@@ -240,7 +240,7 @@ describe("convertHtmlToMarkdown routing", () => {
       </body></html>`;
 
     const result = await convertHtmlToMarkdown(html);
-    expect(result.engine).toBe("defuddle+pandoc-html");
+    expect(result.engine).toBe("defuddle+kreuzberg");
     expect(result.warnings).toContain("defuddle_used");
     expect(result.content).toContain("Main Article");
   });
@@ -258,7 +258,7 @@ describe("convertHtmlToMarkdown routing", () => {
   test("does NOT use Defuddle for short fragment HTML", async () => {
     const html = "<h1>Title</h1><p>Short content</p>";
     const result = await convertHtmlToMarkdown(html);
-    expect(result.engine).toBe("pandoc-html");
+    expect(result.engine).toBe("kreuzberg");
     expect(result.warnings).not.toContain("defuddle_used");
   });
 
@@ -273,7 +273,7 @@ describe("convertHtmlToMarkdown routing", () => {
       </body></html>`;
 
     const result = await convertHtmlToMarkdown(html, { skipDefuddle: true });
-    expect(result.engine).toBe("pandoc-html");
+    expect(result.engine).toBe("kreuzberg");
     expect(result.warnings).not.toContain("defuddle_used");
   });
 });

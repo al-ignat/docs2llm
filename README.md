@@ -101,8 +101,8 @@ Quality is measured, not guessed. An evaluation harness runs against real-world 
 | DOCX / XLSX | 1.0 |
 | Article HTML | 0.99 |
 | Webpage HTML | 0.96 |
+| PDF (digital) | 0.91 |
 | PPTX | 0.91 |
-| PDF (digital) | 0.86 |
 | Email HTML | 0.84 |
 
 Scores are tracked across releases. See [eval/](eval/) for methodology and fixtures.
