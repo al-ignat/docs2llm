@@ -1,9 +1,10 @@
 {
   "name": "docs2llm",
   "description": "Turn documents into LLM-ready Markdown. PDF, DOCX, PPTX, XLSX, HTML, images, URLs — local-first, one command.",
-  "version": "2.0.0",
+  "version": "0.1.0",
   "type": "module",
   "license": "MIT",
+  "keywords": ["document-converter", "markdown", "pdf", "llm", "ai", "cli", "ocr", "docx", "pptx"],
   "repository": {
     "type": "git",
     "url": "https://github.com/al-ignat/docs2llm.git"
