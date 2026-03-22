@@ -32,9 +32,27 @@ interface KreuzbergModule {
 
 let kreuzbergPromise: Promise<KreuzbergModule> | null = null;
 
+/**
+ * In compiled binaries (bun build --compile), Kreuzberg's native loader
+ * fails because createRequire(import.meta.url)("../index.js") can't
+ * resolve inside the $bunfs virtual filesystem. We work around this by
+ * directly requiring the .node addon and injecting it via Kreuzberg's
+ * __setBindingForTests helper before any extraction call.
+ */
+function injectNativeBinding(mod: any): void {
+  if (typeof mod.__setBindingForTests !== "function") return;
+  try {
+    const binding = require("@kreuzberg/node-darwin-arm64/kreuzberg-node.darwin-arm64.node");
+    mod.__setBindingForTests(binding);
+  } catch {
+    // Not on darwin-arm64 or .node file not available — let Kreuzberg's own loader handle it
+  }
+}
+
 async function loadKreuzberg(): Promise<KreuzbergModule> {
   try {
     const mod = await import("@kreuzberg/node");
+    injectNativeBinding(mod);
     return { extractFile: mod.extractFile, extractBytes: mod.extractBytes, isWasm: false };
   } catch {
     const wasm = await import("@kreuzberg/wasm");
