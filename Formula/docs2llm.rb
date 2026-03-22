@@ -13,12 +13,9 @@ class Docs2llm < Formula
   version "0.1.0"
 
   on_macos do
-    if Hardware::CPU.arm?
+    on_arm do
       url "https://github.com/al-ignat/docs2llm/releases/download/v0.1.0/docs2llm-darwin-arm64.tar.gz"
-      sha256 "PLACEHOLDER"
-    else
-      url "https://github.com/al-ignat/docs2llm/releases/download/v0.1.0/docs2llm-darwin-x64.tar.gz"
-      sha256 "PLACEHOLDER"
+      sha256 "269ca48a1b99ce7c299b67bb8b66e90ee60785ae2421bcc6eeb2959ab03feca3"
     end
   end
 
